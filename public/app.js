@@ -12,6 +12,7 @@ const S = {
   tab: 'notes',
   kind: 'note',
   period: 'month',
+  fin: { kind: 'all', project: '', q: '', limit: 50 },
   palette: null, // { mode: 'search' | 'note', q, sel, project, kindForNote }
   data: null,
   undo: null,
@@ -130,7 +131,7 @@ async function render({ quiet } = {}) {
     if (r.view === 'dashboard') S.data = await api('/dashboard');
     else if (r.view === 'project') S.data = await api('/projects/' + encodeURIComponent(r.id));
     else if (r.view === 'monitoring') S.data = await api('/monitoring');
-    else if (r.view === 'finances') S.data = await api('/finances?period=' + S.period);
+    else if (r.view === 'finances') S.data = await api('/finances?' + new URLSearchParams({ period: S.period, kind: S.fin.kind === 'all' ? '' : S.fin.kind, project: S.fin.project, q: S.fin.q, limit: S.fin.limit }));
     else S.data = await api('/dashboard');
   } catch (e) {
     app.innerHTML = shell(r, `<div class="page"><div class="empty big"><b>Couldn't load this page</b><span>${esc(e.message)}</span><button class="btn" data-act="reload">Try again</button></div></div>`, 'Error');
@@ -395,58 +396,143 @@ function viewMonitoring(d) {
 }
 
 // ---------- finances ----------
+const SRC = { stripe: ['Stripe', 'receipt'], recurring: ['Bill', 'calendar-clock'], manual: ['Manual', 'pencil'] };
+const shortMonth = (m) => new Date(m + '-15T12:00:00Z').toLocaleDateString('en-US', { month: 'short' });
+function delta(now, before, { goodUp = true } = {}) {
+  if (!before && !now) return '<span class="delta flat">No change</span>';
+  if (!before) return '<span class="delta flat">New this period</span>';
+  const pct = Math.round(((now - before) / before) * 100);
+  if (!pct) return '<span class="delta flat">Same as last time</span>';
+  const up = pct > 0;
+  return `<span class="delta ${up === goodUp ? 'good' : 'bad'}">${L(up ? 'trending-up' : 'trending-down', 13)}${up ? '+' : ''}${pct}% vs last ${S.period === 'year' ? 'year' : 'month'}</span>`;
+}
+
 function viewFinances(d) {
   const t = d.totals;
   const per = d.period === 'year' ? 'this year' : 'this month';
+  // 12 months of income and costs.
   const months = [];
-  const base = new Date(d.today.slice(0, 7) + '-15T12:00:00Z');
-  for (let i = 5; i >= 0; i--) { const x = new Date(base); x.setUTCMonth(x.getUTCMonth() - i); months.push(x.toISOString().slice(0, 7)); }
-  const inc = Object.fromEntries(months.map((m) => [m, 0]));
-  for (const h of d.history) if (h.kind === 'income' && h.month in inc) inc[h.month] = h.cents;
-  const max = Math.max(1, ...Object.values(inc)) * 1.15;
+  for (let i = 11; i >= 0; i--) { const x = new Date(d.today.slice(0, 7) + '-15T12:00:00Z'); x.setUTCMonth(x.getUTCMonth() - i); months.push(x.toISOString().slice(0, 7)); }
+  const inc = Object.fromEntries(months.map((m) => [m, 0])); const out = Object.fromEntries(months.map((m) => [m, 0]));
+  for (const h of d.history) if (h.month in inc) { if (h.kind === 'income') inc[h.month] += h.cents; else out[h.month] += h.cents; }
+  const top = Math.max(1, ...months.map((m) => Math.max(inc[m], out[m])));
+  const step = [100, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000].find((x) => x * 4 >= top) || Math.ceil(top / 4);
+  const scale = step * 4;
+  const anyMoney = months.some((m) => inc[m] || out[m]);
+
+  // Per site.
   const byP = {};
   for (const r of d.by_project) {
     const k = r.project_id || '_';
-    byP[k] ||= { name: r.name || 'Shared / unassigned', color: r.color || '#71717A', income: 0, costs: 0 };
+    byP[k] ||= { name: r.name || 'Shared', color: r.color || '#71717A', income: 0, costs: 0 };
     if (r.kind === 'income') byP[k].income += r.cents; else byP[k].costs += r.cents;
   }
-  const prows = Object.values(byP).sort((a, b) => b.income - a.income || b.costs - a.costs);
-  const next = d.renewals.find((r) => r.renews_on >= d.today);
+  const prows = Object.values(byP).sort((a, b) => (b.income - b.costs) - (a.income - a.costs));
+  const pmax = Math.max(1, ...prows.map((r) => Math.max(r.income, r.costs)));
+
+  // Break-even.
+  const be = d.break_even;
+  const prog = be ? Math.min(100, Math.round((d.tournaments_month / be) * 100)) : 0;
+  const left = Math.max(0, be - d.tournaments_month);
+  const projOpts = (sel, none = 'Shared / none') => `<option value="">${none}</option>${d.projects.map((p) => `<option value="${esc(p.id)}"${sel === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}`;
+  const F = S.fin;
+
+  const ledgerRow = (r) => {
+    const [srcLabel, srcIcon] = SRC[r.source] || [r.source, 'receipt'];
+    const sign = r.kind === 'income' ? '+' : '−';
+    return `<button class="lrow2" data-act="edit-entry" data-id="${r.id}" aria-label="Edit ${esc(r.description)}">
+      <span class="src" title="${esc(srcLabel)}">${L(srcIcon, 15)}</span>
+      <span class="grow"><b>${esc(r.description)}</b><span>${esc(dateLabel(r.occurred_on))} · <span class="dot" style="width:7px;height:7px;border-radius:2px;background:${esc(r.color || '#71717A')}"></span> ${esc(r.project_name || 'Shared')} · ${esc(srcLabel)}</span></span>
+      <b class="amt ${r.kind === 'income' ? 'in' : ''}">${sign}${money(r.amount_cents).replace('−', '')}</b></button>`;
+  };
+
   const html = `<div class="page">
-  <div class="page-head rise"><div><h1 class="d-only">Finances</h1><p>What each site earns and costs.</p></div>
+  <div class="page-head rise"><div><h1 class="d-only">Finances</h1><p>What each site earns and costs. Tournament Central charges are added automatically.</p></div>
     <div class="row" style="gap:10px;flex-wrap:wrap"><div class="seg" role="group" aria-label="Period"><button class="${d.period === 'month' ? 'on' : ''}" aria-pressed="${d.period === 'month'}" data-act="period" data-v="month">Month</button><button class="${d.period === 'year' ? 'on' : ''}" aria-pressed="${d.period === 'year'}" data-act="period" data-v="year">Year</button></div>
-    <a class="btn" href="/api/ledger.csv" download>${L('download', 15)}Export CSV</a><button class="btn primary" data-act="add-entry">${ICON.plus}Add entry</button></div></div>
-  ${S.showForm === 'entry' ? `<form class="card rise" data-form="entry" style="margin-bottom:16px;display:flex;flex-direction:column;gap:12px"><h2>Add an entry</h2>
-    <div class="form-row"><label class="field" style="flex:2 1 240px"><span>What is it?</span><input class="input" name="description" required maxlength="200" placeholder="Railway — November usage"></label><label class="field"><span>Amount (USD)</span><input class="input" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="0.00"></label><label class="field"><span>Date</span><input class="input" name="occurred_on" type="date" value="${esc(d.today)}"></label></div>
-    <div class="form-row"><label class="field"><span>Type</span><select class="input" name="kind"><option value="cost">Cost</option><option value="income">Income</option><option value="fee">Fee</option><option value="refund">Refund</option></select></label><label class="field"><span>Site</span><select class="input" name="project_id"><option value="">Shared / none</option>${d.projects.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label></div>
-    <div class="row" style="justify-content:flex-end;gap:10px"><button type="button" class="btn" data-act="cancel-form">Cancel</button><button class="btn primary">Save entry</button></div></form>` : ''}
+    <a class="btn exp" href="/api/ledger.csv" download aria-label="Export CSV">${L('download', 15)}<span>Export CSV</span></a><button class="btn primary grow-m" data-act="add-entry">${ICON.plus}Add entry</button></div></div>
+  ${S.showForm === 'entry' ? entryForm(null, d, projOpts) : ''}
   <div class="kpis rise">
-    <div class="kpi"><p class="l">${L('trending-up', 14)}Income ${per}</p><p class="v">${money(t.income)}</p><p class="s">Tournament Central $5 fees</p></div>
-    <div class="kpi"><p class="l">${L('trending-down', 14)}Costs ${per}</p><p class="v">${money(t.costs)}</p><p class="s">Hosting, domains, Stripe fees</p></div>
-    <div class="kpi"><p class="l">${L('scale', 14)}Net ${per}</p><p class="v">${money(t.net)}</p><p class="s">${t.net >= 0 ? 'Income covers costs' : 'Costs exceed income'}</p></div>
-    <div class="kpi"><p class="l">${L('calendar-clock', 14)}Next renewal</p><p class="v mono" style="font-size:18px;padding-top:6px">${next ? esc(next.domain) : '—'}</p><p class="s">${next ? `${esc(dateLabel(next.renews_on))} · ${money(next.price_cents)}` : 'Add your domains below'}</p></div>
+    <div class="kpi"><p class="l">${L('trending-up', 14)}Income ${per}</p><p class="v">${money(t.income)}</p>${delta(t.income, d.prev.income)}</div>
+    <div class="kpi"><p class="l">${L('trending-down', 14)}Costs ${per}</p><p class="v">${money(t.costs)}</p>${delta(t.costs, d.prev.costs, { goodUp: false })}</div>
+    <div class="kpi"><p class="l">${L('scale', 14)}Net ${per}</p><p class="v ${t.net < 0 ? 'neg' : ''}">${money(t.net)}</p><span class="delta flat">${t.net >= 0 ? 'Income covers costs' : 'Costs are higher than income'}</span></div>
+    <div class="kpi"><p class="l">${L('list-todo', 14)}Tournaments</p><p class="v">${d.tournaments}</p>${delta(d.tournaments, d.tournaments_prev)}</div>
   </div>
+
+  <section class="card be rise" aria-labelledby="be-h" style="margin-top:16px">
+    <div class="card-head">${H('be-h', 'target', 'Break-even')}<span class="muted">${money(d.net_per_tournament)} kept per $5 tournament after Stripe</span></div>
+    ${be ? `<div class="be-row"><div><p class="be-big"><b>${d.tournaments_month}</b> of <b>${be}</b> tournaments this month</p>
+      <p class="muted" style="margin:2px 0 0;font-size:14px">${left ? `${left} more to cover ${money(d.fixed_monthly)} in monthly costs.` : `Covered — every tournament from here is profit.`}</p></div>
+      <span class="pill ${left ? 'progress' : 'live'}">${left ? `${prog}%` : 'Covered'}</span></div>
+      <div class="meter" role="progressbar" aria-valuemin="0" aria-valuemax="${be}" aria-valuenow="${d.tournaments_month}" aria-label="Tournaments toward break-even"><span style="width:${prog}%"></span></div>`
+    : `<div class="empty">${L('calendar-clock', 28)}<span>Add your monthly bills below (Railway, Cloudflare, domains…) and this will show how many $5 tournaments a month cover them.</span></div>`}
+  </section>
+
   <div class="split" style="margin-top:16px">
-    <section class="card wide" aria-labelledby="inc-h"><div class="card-head">${H('inc-h', 'chart-column', 'Income by month')}<span class="muted">Last 6 months</span></div>
-      <div class="bars" role="img" aria-label="${esc('Income by month: ' + months.map((m) => `${m} ${money(inc[m])}`).join(', '))}" style="margin-top:12px">${months.map((m, i) => `<div class="col${i === 5 ? ' last' : ''}"><span class="val">${money(inc[m])}</span><span class="bar" style="height:${((inc[m] / max) * 100).toFixed(1)}%"></span></div>`).join('')}</div>
-      <div class="months">${months.map((m) => `<span>${new Date(m + '-15T12:00:00Z').toLocaleDateString('en-US', { month: 'short' })}</span>`).join('')}</div>
+    <section class="card wide rise" aria-labelledby="inc-h"><div class="card-head">${H('inc-h', 'chart-column', 'Income and costs')}<span class="legend"><span><i style="background:var(--s-in)"></i>Income</span><span><i style="background:var(--s-out)"></i>Costs</span></span></div>
+      <div class="chart" role="img" aria-label="${esc('Last 12 months. ' + months.map((m) => `${shortMonth(m)}: income ${money(inc[m])}, costs ${money(out[m])}`).join('; '))}">
+        <div class="axis">${[4, 3, 2, 1, 0].map((i) => `<span>${money(step * i, true)}</span>`).join('')}</div>
+        <div class="plot">
+          ${months.map((m, i) => `<div class="mcol${i === 11 ? ' now' : ''}" tabindex="0">
+            <div class="pair"><span class="b in" style="height:${((inc[m] / scale) * 100).toFixed(1)}%"></span><span class="b out" style="height:${((out[m] / scale) * 100).toFixed(1)}%"></span></div>
+            <span class="mlab">${shortMonth(m)}</span>
+            <div class="tip"><b>${new Date(m + '-15T12:00:00Z').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</b><span><i style="background:var(--s-in)"></i>Income<em>${money(inc[m])}</em></span><span><i style="background:var(--s-out)"></i>Costs<em>${money(out[m])}</em></span><span class="net">Net<em>${money(inc[m] - out[m])}</em></span></div>
+          </div>`).join('')}
+        </div>
+      </div>
+      ${anyMoney ? '' : '<p class="muted" style="margin:10px 0 0;font-size:13px">No money recorded yet — bars appear as charges and bills come in.</p>'}
     </section>
-    <section class="card narrow" aria-labelledby="bp-h" style="display:block"><h2 id="bp-h" class="ih" style="margin-bottom:8px">${L('globe', 16)}By site · ${per}</h2>
-      ${prows.map((r) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px"><span class="dot" style="background:${esc(r.color)}"></span><span style="flex:1;font-size:14px">${esc(r.name)}</span><span style="font-size:13px;text-align:right"><span style="font-weight:600">${money(r.income - r.costs)}</span><br><span class="muted">${money(r.income)} in · ${money(r.costs)} out</span></span></div>`).join('') || '<p class="muted" style="margin:0;font-size:14px">Nothing recorded yet.</p>'}
+    <section class="card narrow rise" aria-labelledby="bp-h" style="display:block"><h2 id="bp-h" class="ih" style="margin-bottom:6px">${L('globe', 16)}By site · ${per}</h2>
+      ${prows.map((r) => `<div class="site-row"><div class="row" style="gap:8px"><span class="dot" style="background:${esc(r.color)}"></span><span style="flex:1;font-size:14px;font-weight:500">${esc(r.name)}</span><b class="num" style="font-size:14px;${r.income - r.costs < 0 ? 'color:var(--bad)' : ''}">${money(r.income - r.costs)}</b></div>
+        <div class="minibars"><span class="in" style="width:${((r.income / pmax) * 100).toFixed(1)}%"></span><span class="out" style="width:${((r.costs / pmax) * 100).toFixed(1)}%"></span></div>
+        <p class="muted" style="margin:0;font-size:12px">${money(r.income)} in · ${money(r.costs)} out</p></div>`).join('') || '<p class="muted" style="margin:0;font-size:14px">Nothing recorded yet.</p>'}
     </section>
   </div>
+
   <div class="split" style="margin-top:16px">
-    <section class="card wide" style="padding:0;overflow:hidden" aria-labelledby="led-h"><div class="card-head" style="padding:18px 20px 6px">${H('led-h', 'receipt', 'Ledger')}<span class="muted">Newest first</span></div>
-      <div class="m-only" style="padding:0 16px 6px">${d.rows.map((r) => `<div class="lrow"><span class="grow"><b>${esc(r.description)}</b><span>${esc(dateLabel(r.occurred_on))} · ${esc(r.project_name || 'Shared')} · ${esc(r.kind)}</span></span><b style="font-size:14px;color:${r.kind === 'income' ? 'var(--good)' : 'inherit'}">${r.kind === 'income' ? '+' : '−'}${money(r.amount_cents).replace('−', '')}</b>${r.source === 'manual' ? `<button class="icon-btn" data-act="del-entry" data-id="${r.id}" aria-label="Delete entry">${ICON.trash}</button>` : ''}</div>`).join('') || '<p class="muted" style="font-size:14px">No entries yet.</p>'}</div><div class="table-wrap collapse"><table class="t" style="min-width:560px"><thead><tr><th scope="col">Date</th><th scope="col">What</th><th scope="col">Site</th><th scope="col" class="num">Amount</th><th scope="col"><span class="sr">Delete</span></th></tr></thead><tbody>
-      ${d.rows.map((r) => `<tr><td class="muted" style="white-space:nowrap">${esc(dateLabel(r.occurred_on))}</td><td>${esc(r.description)} <span class="muted" style="font-size:12px">· ${esc(r.kind)}${r.source !== 'manual' ? ' · ' + esc(r.source) : ''}</span></td><td>${esc(r.project_name || '—')}</td><td class="num" style="font-weight:500;color:${r.kind === 'income' ? 'var(--good)' : 'inherit'}">${r.kind === 'income' ? '+' : '−'}${money(r.amount_cents).replace('−', '')}</td><td style="width:44px">${r.source === 'manual' ? `<button class="icon-btn" data-act="del-entry" data-id="${r.id}" aria-label="Delete entry">${ICON.trash}</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No entries yet.</td></tr>'}
-      </tbody></table></div></section>
-    <section class="card narrow" aria-labelledby="ren-h" style="display:block"><div class="card-head">${H('ren-h', 'calendar-clock', 'Domain renewals')}<button class="btn small" data-act="add-renewal">+ Add</button></div>
-      ${S.showForm === 'renewal' ? `<form data-form="renewal" style="display:flex;flex-direction:column;gap:10px;margin:10px 0"><label class="field"><span>Domain</span><input class="input mono" name="domain" required placeholder="tournamentcentral.app"></label><div class="form-row"><label class="field"><span>Renews on</span><input class="input" type="date" name="renews_on" required></label><label class="field"><span>Price (USD)</span><input class="input" type="number" min="0" step="0.01" name="price"></label></div><label class="field"><span>Site</span><select class="input" name="project_id"><option value="">None</option>${d.projects.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label><div class="row" style="justify-content:flex-end;gap:8px"><button type="button" class="btn small" data-act="cancel-form">Cancel</button><button class="btn small primary">Save</button></div></form>` : ''}
-      ${d.renewals.map((r) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px"><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span class="mono" style="font-size:14px;font-weight:500">${esc(r.domain)}</span><span class="muted" style="font-size:12px">${esc(dateLabel(r.renews_on))}${r.project_name ? ' · ' + esc(r.project_name) : ''}</span></span><span style="font-size:14px;font-weight:500">${money(r.price_cents)}</span><button class="icon-btn" data-act="del-renewal" data-id="${r.id}" aria-label="Delete renewal">${ICON.trash}</button></div>`).join('') || '<p class="muted" style="margin:6px 0 0;font-size:14px">Add each domain once; the hub shows the next one due.</p>'}
+    <section class="card wide rise" style="padding:0;overflow:hidden" aria-labelledby="led-h">
+      <div class="led-head"><div class="card-head" style="margin:0">${H('led-h', 'receipt', 'Ledger')}<span class="muted">Tap an entry to edit</span></div>
+        <div class="led-filters">
+          <div class="seg" role="group" aria-label="Show">${[['all', 'All'], ['in', 'Income'], ['out', 'Costs']].map(([k, l]) => `<button class="${F.kind === k ? 'on' : ''}" aria-pressed="${F.kind === k}" data-act="fin-kind" data-v="${k}">${l}</button>`).join('')}</div>
+          <label class="sr" for="fin-site">Site</label><select id="fin-site" class="input sm" data-act="fin-project"><option value="">All sites</option><option value="_"${F.project === '_' ? ' selected' : ''}>Shared</option>${d.projects.map((p) => `<option value="${esc(p.id)}"${F.project === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+          <label class="search-in">${L('search', 15)}<span class="sr">Search the ledger</span><input class="input sm" id="fin-q" type="search" placeholder="Search…" value="${esc(F.q)}" autocomplete="off"></label>
+        </div></div>
+      <div class="led-list">${d.rows.map(ledgerRow).join('') || `<p class="muted" style="padding:20px;margin:0;font-size:14px;text-align:center">${F.q || F.project || F.kind !== 'all' ? 'No entries match.' : 'No entries yet.'}</p>`}</div>
+      ${d.more ? '<div style="padding:12px 20px;border-top:1px solid var(--border)"><button class="btn small" data-act="fin-more">Show more</button></div>' : ''}
     </section>
+    <aside class="narrow">
+      <section class="card" aria-labelledby="up-h"><div class="card-head">${H('up-h', 'clock', 'Coming up')}<span class="muted">Next 60 days</span></div>
+        ${d.upcoming.map((u) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px"><span class="when"><b>${new Date(u.on + 'T12:00:00').getDate()}</b>${new Date(u.on + 'T12:00:00').toLocaleDateString('en-US', { month: 'short' })}</span><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span style="font-size:14px;font-weight:500">${esc(u.name)}</span><span class="muted" style="font-size:12px">${u.type === 'domain' ? 'Domain renewal' : 'Bill'}${u.project_name ? ' · ' + esc(u.project_name) : ''}</span></span><b class="num" style="font-size:14px">${money(u.cents)}</b></div>`).join('') || '<p class="muted" style="margin:6px 0 0;font-size:14px">Nothing due soon.</p>'}
+      </section>
+      <section class="card" aria-labelledby="rec-h"><div class="card-head">${H('rec-h', 'refresh-cw', 'Monthly bills')}<button class="btn small" data-act="add-recurring">+ Add</button></div>
+        <p class="muted" style="margin:0 0 6px;font-size:13px">${d.recurring.length ? `About ${money(d.recurring.filter((r) => r.active).reduce((a, r) => a + (r.cadence === 'yearly' ? r.amount_cents / 12 : r.amount_cents), 0))} a month. Each one is added to the ledger on its date.` : 'Add a bill once; it’s logged to the ledger automatically every time it’s due.'}</p>
+        ${S.showForm === 'recurring' ? `<form data-form="recurring" style="display:flex;flex-direction:column;gap:10px;margin:10px 0"><label class="field"><span>What is it?</span><input class="input" name="name" required maxlength="80" placeholder="Railway — Hobby plan"></label><div class="form-row"><label class="field"><span>Amount (USD)</span><input class="input" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="5.00"></label><label class="field"><span>Every</span><select class="input" name="cadence"><option value="monthly">Month</option><option value="yearly">Year</option></select></label></div><div class="form-row"><label class="field"><span>Next charge</span><input class="input" type="date" name="next_on" required value="${esc(d.today)}"></label><label class="field"><span>Site</span><select class="input" name="project_id">${projOpts('')}</select></label></div><div class="row" style="justify-content:flex-end;gap:8px"><button type="button" class="btn small" data-act="cancel-form">Cancel</button><button class="btn small primary">Save bill</button></div></form>` : ''}
+        ${d.recurring.map((r) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px;${r.active ? '' : 'opacity:.55'}"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(r.color || '#71717A')}"></span><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span style="font-size:14px;font-weight:500">${esc(r.name)}</span><span class="muted" style="font-size:12px">${money(r.amount_cents)} / ${r.cadence === 'yearly' ? 'year' : 'month'} · ${r.active ? 'next ' + esc(dateLabel(r.next_on)) : 'paused'}</span></span><input type="checkbox" class="switch" role="switch" aria-label="${esc(r.name)} active" data-act="rec-on" data-id="${r.id}" ${r.active ? 'checked' : ''}><button class="icon-btn" data-act="del-recurring" data-id="${r.id}" aria-label="Delete ${esc(r.name)}">${ICON.trash}</button></div>`).join('')}
+      </section>
+      <section class="card" aria-labelledby="ren-h"><div class="card-head">${H('ren-h', 'globe', 'Domains')}<button class="btn small" data-act="add-renewal">+ Add</button></div>
+        ${S.showForm === 'renewal' ? `<form data-form="renewal" style="display:flex;flex-direction:column;gap:10px;margin:10px 0"><label class="field"><span>Domain</span><input class="input mono" name="domain" required placeholder="tournamentcentral.app"></label><div class="form-row"><label class="field"><span>Renews on</span><input class="input" type="date" name="renews_on" required></label><label class="field"><span>Price (USD)</span><input class="input" type="number" min="0" step="0.01" name="price"></label></div><label class="field"><span>Site</span><select class="input" name="project_id">${projOpts('', 'None')}</select></label><div class="row" style="justify-content:flex-end;gap:8px"><button type="button" class="btn small" data-act="cancel-form">Cancel</button><button class="btn small primary">Save</button></div></form>` : ''}
+        ${d.renewals.map((r) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px"><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span class="mono" style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis">${esc(r.domain)}</span><span class="muted" style="font-size:12px">Renews ${esc(dateLabel(r.renews_on))}${r.project_name ? ' · ' + esc(r.project_name) : ''}</span></span><span style="font-size:14px;font-weight:500">${money(r.price_cents)}</span><button class="icon-btn" data-act="del-renewal" data-id="${r.id}" aria-label="Delete renewal">${ICON.trash}</button></div>`).join('') || '<p class="muted" style="margin:6px 0 0;font-size:14px">Add each domain once; renewals show up in Coming up.</p>'}
+      </section>
+    </aside>
   </div>
 </div>`;
   return { crumb: 'Finances', html };
+}
+
+function entryForm(r, d, projOpts) {
+  const v = r || { kind: 'cost', description: '', amount_cents: '', occurred_on: d.today, project_id: '' };
+  const locked = r && r.source === 'stripe';
+  return `<form class="card rise" data-form="entry" data-id="${r ? r.id : ''}" style="margin-bottom:16px;display:flex;flex-direction:column;gap:12px"><h2>${r ? 'Edit entry' : 'Add an entry'}</h2>
+    ${locked ? '<p class="muted" style="margin:0;font-size:13px">This came from Stripe, so only its site can be changed.</p>' : ''}
+    <div class="form-row"><label class="field" style="flex:2 1 240px"><span>What is it?</span><input class="input" name="description" required maxlength="200" placeholder="Railway — November usage" value="${esc(v.description)}" ${locked ? 'disabled' : ''}></label><label class="field"><span>Amount (USD)</span><input class="input" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="0.00" value="${v.amount_cents ? (v.amount_cents / 100).toFixed(2) : ''}" ${locked ? 'disabled' : ''}></label><label class="field"><span>Date</span><input class="input" name="occurred_on" type="date" value="${esc(v.occurred_on)}" ${locked ? 'disabled' : ''}></label></div>
+    <div class="form-row"><label class="field"><span>Type</span><select class="input" name="kind" ${locked ? 'disabled' : ''}>${[['cost', 'Cost'], ['income', 'Income'], ['fee', 'Fee'], ['refund', 'Refund']].map(([k, l]) => `<option value="${k}"${v.kind === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label><label class="field"><span>Site</span><select class="input" name="project_id">${projOpts(v.project_id || '')}</select></label></div>
+    <div class="row" style="justify-content:space-between;gap:10px">${r && !locked ? `<button type="button" class="btn danger" data-act="del-entry" data-id="${r.id}">${ICON.trash}Delete</button>` : '<span></span>'}<div class="row" style="gap:10px"><button type="button" class="btn" data-act="cancel-form">Cancel</button><button class="btn primary">${r ? 'Save' : 'Save entry'}</button></div></div></form>`;
+}
+
+function editEntryDialog(r) {
+  const d = S.data;
+  const projOpts = (sel) => `<option value="">Shared / none</option>${d.projects.map((p) => `<option value="${esc(p.id)}"${sel === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}`;
+  S.palette = { mode: 'entry' };
+  $('#overlay').innerHTML = `<div class="scrim" data-act="scrim"><div class="dialog" role="dialog" aria-modal="true" aria-label="Edit entry">${entryForm(r, d, projOpts).replace('class="card rise"', 'class="pad"').replace('margin-bottom:16px;', '')}</div></div>`;
 }
 
 // ---------- command palette + quick note ----------
@@ -612,7 +698,12 @@ document.addEventListener('click', async (e) => {
       case 'add-renewal': S.showForm = 'renewal'; render({ quiet: true }); break;
       case 'cancel-form': S.showForm = null; render({ quiet: true }); break;
       case 'del-link': await api('/links/' + id, { method: 'DELETE' }); toast('Link removed'); render({ quiet: true }); break;
-      case 'del-entry': await api('/ledger/' + id, { method: 'DELETE' }); toast('Entry deleted'); render({ quiet: true }); break;
+      case 'del-entry': await api('/ledger/' + id, { method: 'DELETE' }); closePalette(); S.showForm = null; toast('Entry deleted'); render({ quiet: true }); break;
+      case 'edit-entry': { const r = S.data.rows.find((x) => x.id === Number(id)); if (r) editEntryDialog(r); break; }
+      case 'fin-kind': S.fin.kind = v; S.fin.limit = 50; render({ quiet: true }); break;
+      case 'fin-more': S.fin.limit += 100; render({ quiet: true }); break;
+      case 'add-recurring': S.showForm = 'recurring'; render({ quiet: true }); break;
+      case 'del-recurring': await api('/recurring/' + id, { method: 'DELETE' }); toast('Bill removed'); render({ quiet: true }); break;
       case 'del-renewal': await api('/renewals/' + id, { method: 'DELETE' }); render({ quiet: true }); break;
       case 'run-checks': await runChecksNow(); break;
       case 'resolve': await api(`/incidents/${id}/resolve`, { method: 'POST' }); render({ quiet: true }); break;
@@ -639,6 +730,8 @@ document.addEventListener('change', async (e) => {
       if (done) toast('To-do done', { undo: async () => { await api('/notes/' + t.dataset.id, { method: 'PATCH', body: { done: false } }); render({ quiet: true }); } });
       render({ quiet: true });
     }
+    if (t.dataset.act === 'rec-on') { await api('/recurring/' + t.dataset.id, { method: 'PATCH', body: { active: t.checked } }); render({ quiet: true }); }
+    if (t.dataset.act === 'fin-project') { S.fin.project = t.value; S.fin.limit = 50; render({ quiet: true }); }
     if (t.dataset.act === 'check-on') {
       await api('/checks/' + t.dataset.id, { method: 'PATCH', body: { enabled: t.checked } });
       render({ quiet: true });
@@ -673,7 +766,13 @@ document.addEventListener('submit', async (e) => {
       case 'edit-note': await api('/notes/' + f.dataset.id, { method: 'PATCH', body: { text: data.text } }); S.editing = null; toast('Note saved'); render({ quiet: true }); break;
       case 'link': await api('/links', { method: 'POST', body: { project_id: route().id, ...data } }); S.showForm = null; toast('Link added'); render({ quiet: true }); break;
       case 'check': await api('/checks', { method: 'POST', body: data }); S.showForm = null; toast('Check added — it runs within a minute'); render({ quiet: true }); break;
-      case 'entry': await api('/ledger', { method: 'POST', body: data }); S.showForm = null; toast('Entry saved'); render({ quiet: true }); break;
+      case 'entry': {
+        if (f.dataset.id) { await api('/ledger/' + f.dataset.id, { method: 'PATCH', body: data }); closePalette(); toast('Entry saved'); }
+        else { await api('/ledger', { method: 'POST', body: data }); S.showForm = null; toast('Entry saved'); }
+        render({ quiet: true });
+        break;
+      }
+      case 'recurring': await api('/recurring', { method: 'POST', body: data }); S.showForm = null; toast('Bill added'); render({ quiet: true }); break;
       case 'renewal': await api('/renewals', { method: 'POST', body: data }); S.showForm = null; render({ quiet: true }); break;
       case 'project': {
         const id = f.dataset.id;
@@ -690,6 +789,18 @@ document.addEventListener('submit', async (e) => {
       default: break;
     }
   } catch (err) { fail(err); if (btn) btn.disabled = false; }
+});
+
+// Ledger search: filter as you type, keeping the cursor in the box.
+let finTimer;
+document.addEventListener('input', (e) => {
+  if (e.target.id !== 'fin-q') return;
+  clearTimeout(finTimer);
+  finTimer = setTimeout(async () => {
+    S.fin.q = e.target.value; S.fin.limit = 50;
+    await render({ quiet: true });
+    const q = $('#fin-q'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+  }, 250);
 });
 
 // Keyboard: ⌘K / Ctrl+K search, N new note, Esc closes, ⌘↵ saves a note.

@@ -1,7 +1,7 @@
 // mazzagotte.dev — James's private project hub.
 // Pages and /api sit behind Cloudflare Access (+ a token check here). /hooks/* takes webhooks with their own secrets.
 import { verifyAccess } from './access.js';
-import { handleApi } from './api.js';
+import { handleApi, postRecurring } from './api.js';
 import { pruneResults, runChecks } from './checks.js';
 import { handleHook } from './hooks.js';
 import { HttpError, json, text, zonedParts } from './util.js';
@@ -47,6 +47,8 @@ export default {
       // Once a day (3 AM Mountain), drop check history older than the 90-day window.
       const now = zonedParts(env.TIMEZONE || 'America/Denver');
       if (now.hour === 3 && now.minute === 0) await pruneResults(env).catch((e) => console.log('prune failed', e));
+      // Post recurring bills that came due (just after midnight Mountain).
+      if (now.hour === 0 && now.minute === 5) await postRecurring(env).catch((e) => console.log('recurring failed', e));
     })());
   },
 };

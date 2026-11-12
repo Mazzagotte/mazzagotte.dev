@@ -289,44 +289,147 @@ async function createCheck(env, b) {
 }
 
 // ---------- finances ----------
+// What one $5 tournament leaves after Stripe's cut (2.9% + 30¢), which we absorb.
+const NET_PER_TOURNAMENT = 500 - Math.round(500 * 0.029) - 30;
+
+function addMonths(date, n) {
+  const [y, m, d] = date.split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1 + n, 1));
+  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  first.setUTCDate(Math.min(d, last));
+  return first.toISOString().slice(0, 10);
+}
+const monthlyOf = (r) => (r.cadence === 'yearly' ? Math.round(r.amount_cents / 12) : r.amount_cents);
+
+// Post every recurring bill that has come due (catching up if a few were missed), once each.
+export async function postRecurring(env) {
+  const today = todayLocal(tzOf(env));
+  const { results } = await env.DB.prepare('SELECT * FROM recurring WHERE active = 1 AND next_on <= ?').bind(today).all();
+  for (const r of results) {
+    let on = r.next_on;
+    for (let i = 0; i < 24 && on <= today; i++) {
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO ledger (project_id, kind, source, description, amount_cents, occurred_on, external_id, created_at)
+         VALUES (?, 'cost', 'recurring', ?, ?, ?, ?, ?)`
+      ).bind(r.project_id, r.name, r.amount_cents, on, `rec:${r.id}:${on}`, Date.now()).run();
+      on = addMonths(on, r.cadence === 'yearly' ? 12 : 1);
+    }
+    await env.DB.prepare('UPDATE recurring SET next_on = ? WHERE id = ?').bind(on, r.id).run();
+  }
+}
+
 async function finances(env, url) {
+  await postRecurring(env);
   const tz = tzOf(env);
   const today = todayLocal(tz);
   const period = url.searchParams.get('period') === 'year' ? 'year' : 'month';
   const [from, to] = period === 'year' ? [today.slice(0, 4) + '-01-01', today.slice(0, 4) + '-12-31'] : monthRange(today);
-  const totals = await moneySummary(env, from, to);
+  // Same stretch last time, up to the same day, so the comparison is fair mid-month.
+  const prevFrom = period === 'year' ? addMonths(from, -12) : addMonths(from, -1);
+  const prevTo = period === 'year' ? addMonths(today, -12) : addMonths(today, -1);
+  const [totals, prev] = await Promise.all([moneySummary(env, from, to), moneySummary(env, prevFrom, prevTo)]);
+
+  const tCount = async (a, b2) => (await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM ledger WHERE kind = 'income' AND project_id = 'tc' AND occurred_on BETWEEN ? AND ?"
+  ).bind(a, b2).first()).n;
+  const [monthFrom, monthTo] = monthRange(today);
+  const [tournaments, tournamentsPrev, tournamentsMonth] = await Promise.all([tCount(from, to), tCount(prevFrom, prevTo), tCount(monthFrom, monthTo)]);
+
   const { results: byProject } = await env.DB.prepare(
     `SELECT l.project_id, p.name, p.color, l.kind, SUM(l.amount_cents) AS cents
        FROM ledger l LEFT JOIN projects p ON p.id = l.project_id
       WHERE l.occurred_on BETWEEN ? AND ? GROUP BY l.project_id, l.kind`
   ).bind(from, to).all();
-  const sixAgo = monthRange(addDays(today.slice(0, 8) + '01', -150))[0];
   const { results: history } = await env.DB.prepare(
     `SELECT substr(occurred_on, 1, 7) AS month, kind, SUM(amount_cents) AS cents FROM ledger
       WHERE occurred_on >= ? GROUP BY month, kind ORDER BY month`
-  ).bind(sixAgo).all();
+  ).bind(addMonths(monthFrom, -11)).all();
+
+  // Ledger with filters: kind=in|out, project, q, limit.
+  const where = []; const vals = [];
+  const k = url.searchParams.get('kind');
+  if (k === 'in') where.push("l.kind = 'income'");
+  if (k === 'out') where.push("l.kind != 'income'");
+  const fp = url.searchParams.get('project');
+  if (fp === '_') where.push('l.project_id IS NULL'); else if (fp) { where.push('l.project_id = ?'); vals.push(fp); }
+  const q = String(url.searchParams.get('q') || '').trim().slice(0, 80);
+  if (q) { where.push("l.description LIKE ? ESCAPE '\\'"); vals.push('%' + q.replace(/[%_\\]/g, (c) => '\\' + c) + '%'); }
+  const limit = Math.min(500, Math.max(20, Number.parseInt(url.searchParams.get('limit'), 10) || 50));
+  const w = where.length ? 'WHERE ' + where.join(' AND ') : '';
   const { results: rows } = await env.DB.prepare(
-    `SELECT l.*, p.name AS project_name, p.color FROM ledger l LEFT JOIN projects p ON p.id = l.project_id
-      ORDER BY l.occurred_on DESC, l.id DESC LIMIT 50`
-  ).all();
+    `SELECT l.*, p.name AS project_name, p.color FROM ledger l LEFT JOIN projects p ON p.id = l.project_id ${w}
+      ORDER BY l.occurred_on DESC, l.id DESC LIMIT ?`
+  ).bind(...vals, limit + 1).all();
+  const more = rows.length > limit;
+
   const { results: renewals } = await env.DB.prepare(
-    `SELECT r.*, p.name AS project_name FROM renewals r LEFT JOIN projects p ON p.id = r.project_id ORDER BY r.renews_on`
+    `SELECT r.*, p.name AS project_name, p.color FROM renewals r LEFT JOIN projects p ON p.id = r.project_id ORDER BY r.renews_on`
   ).all();
-  return { period, from, to, today, totals, by_project: byProject, history, rows, renewals, projects: await allProjects(env) };
+  const { results: recurring } = await env.DB.prepare(
+    `SELECT r.*, p.name AS project_name, p.color FROM recurring r LEFT JOIN projects p ON p.id = r.project_id ORDER BY r.active DESC, r.next_on`
+  ).all();
+
+  // Fixed monthly costs = active bills + domains spread over the year.
+  const fixed = recurring.filter((r) => r.active).reduce((a, r) => a + monthlyOf(r), 0)
+    + renewals.reduce((a, r) => a + Math.round(r.price_cents / 12), 0);
+  const breakEven = fixed ? Math.ceil(fixed / NET_PER_TOURNAMENT) : 0;
+
+  const horizon = addDays(today, 60);
+  const upcoming = [
+    ...recurring.filter((r) => r.active && r.next_on <= horizon).map((r) => ({ type: 'bill', name: r.name, on: r.next_on, cents: r.amount_cents, project_name: r.project_name, color: r.color })),
+    ...renewals.filter((r) => r.renews_on >= today && r.renews_on <= horizon).map((r) => ({ type: 'domain', name: r.domain, on: r.renews_on, cents: r.price_cents, project_name: r.project_name, color: r.color })),
+  ].sort((a, b2) => a.on.localeCompare(b2.on));
+
+  return {
+    period, from, to, today, totals, prev, tournaments, tournaments_prev: tournamentsPrev, tournaments_month: tournamentsMonth,
+    fixed_monthly: fixed, break_even: breakEven, net_per_tournament: NET_PER_TOURNAMENT,
+    by_project: byProject, history, rows: rows.slice(0, limit), more, renewals, recurring, upcoming, projects: await allProjects(env),
+  };
+}
+
+function ledgerFields(b, env) {
+  const out = {};
+  if ('kind' in b) out.kind = LEDGER_KINDS.includes(b.kind) ? b.kind : 'cost';
+  if ('description' in b) out.description = need(str(b.description, 200), 'Describe it');
+  if ('amount' in b) {
+    const cents = Math.round(Number(b.amount) * 100);
+    if (!Number.isFinite(cents) || cents <= 0) throw new HttpError(400, 'Enter an amount above $0');
+    out.amount_cents = cents;
+  }
+  if ('occurred_on' in b) out.occurred_on = DATE_RE.test(b.occurred_on || '') ? b.occurred_on : todayLocal(tzOf(env));
+  if ('project_id' in b) out.project_id = str(b.project_id, 24) || null;
+  return out;
 }
 
 async function createLedger(env, b) {
-  const kind = LEDGER_KINDS.includes(b.kind) ? b.kind : 'cost';
-  const description = need(str(b.description, 200), 'Describe it');
-  const cents = Math.round(Number(b.amount) * 100);
-  if (!Number.isFinite(cents) || cents <= 0) throw new HttpError(400, 'Enter an amount above $0');
-  const tz = tzOf(env);
-  const on = DATE_RE.test(b.occurred_on || '') ? b.occurred_on : todayLocal(tz);
-  const project = str(b.project_id, 24);
+  const f = ledgerFields({ kind: 'cost', occurred_on: '', project_id: '', ...b }, env);
+  if (!f.description || !f.amount_cents) throw new HttpError(400, 'Describe it and enter an amount');
   const r = await env.DB.prepare(
     "INSERT INTO ledger (project_id, kind, source, description, amount_cents, occurred_on, created_at) VALUES (?, ?, 'manual', ?, ?, ?, ?)"
-  ).bind(project, kind, description, cents, on, Date.now()).run();
+  ).bind(f.project_id, f.kind, f.description, f.amount_cents, f.occurred_on, Date.now()).run();
   return env.DB.prepare('SELECT * FROM ledger WHERE id = ?').bind(r.meta.last_row_id).first();
+}
+
+async function updateLedger(env, id, b) {
+  const row = await env.DB.prepare('SELECT * FROM ledger WHERE id = ?').bind(id).first();
+  if (!row) throw new HttpError(404, 'No such entry');
+  // Stripe entries are the record of real charges; only their site can change.
+  const f = ledgerFields(row.source === 'stripe' ? { project_id: b.project_id } : b, env);
+  const keys = Object.keys(f);
+  if (keys.length) await env.DB.prepare(`UPDATE ledger SET ${keys.map((k) => k + ' = ?').join(', ')} WHERE id = ?`).bind(...keys.map((k) => f[k]), id).run();
+  return env.DB.prepare('SELECT * FROM ledger WHERE id = ?').bind(id).first();
+}
+
+async function createRecurring(env, b) {
+  const name = need(str(b.name, 80), 'Name the bill');
+  const cents = Math.round(Number(b.amount) * 100);
+  if (!Number.isFinite(cents) || cents <= 0) throw new HttpError(400, 'Enter an amount above $0');
+  const cadence = b.cadence === 'yearly' ? 'yearly' : 'monthly';
+  if (!DATE_RE.test(b.next_on || '')) throw new HttpError(400, 'Pick the next charge date');
+  const r = await env.DB.prepare('INSERT INTO recurring (project_id, name, amount_cents, cadence, next_on, active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)')
+    .bind(str(b.project_id, 24) || null, name, cents, cadence, b.next_on, Date.now()).run();
+  await postRecurring(env);
+  return env.DB.prepare('SELECT * FROM recurring WHERE id = ?').bind(r.meta.last_row_id).first();
 }
 
 async function createRenewal(env, b) {
@@ -404,9 +507,24 @@ export async function handleApi(request, env, ctx) {
 
   if (method === 'GET' && path === '/finances') return json(await finances(env, url));
   if (method === 'POST' && path === '/ledger') return json(await createLedger(env, await readJson(request)), 201);
-  if ((m = path.match(/^\/ledger\/(\d+)$/)) && method === 'DELETE') {
-    await env.DB.prepare('DELETE FROM ledger WHERE id = ?').bind(Number(m[1])).run();
-    return json({ ok: true });
+  if ((m = path.match(/^\/ledger\/(\d+)$/))) {
+    if (method === 'PATCH') return json(await updateLedger(env, Number(m[1]), await readJson(request)));
+    if (method === 'DELETE') {
+      await env.DB.prepare("DELETE FROM ledger WHERE id = ? AND source != 'stripe'").bind(Number(m[1])).run();
+      return json({ ok: true });
+    }
+  }
+  if (method === 'POST' && path === '/recurring') return json(await createRecurring(env, await readJson(request)), 201);
+  if ((m = path.match(/^\/recurring\/(\d+)$/))) {
+    if (method === 'PATCH') {
+      const b = await readJson(request);
+      await env.DB.prepare('UPDATE recurring SET active = ? WHERE id = ?').bind(b.active ? 1 : 0, Number(m[1])).run();
+      return json({ ok: true });
+    }
+    if (method === 'DELETE') {
+      await env.DB.prepare('DELETE FROM recurring WHERE id = ?').bind(Number(m[1])).run();
+      return json({ ok: true });
+    }
   }
   if (method === 'POST' && path === '/renewals') return json(await createRenewal(env, await readJson(request)), 201);
   if ((m = path.match(/^\/renewals\/(\d+)$/)) && method === 'DELETE') {
