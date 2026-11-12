@@ -14,22 +14,7 @@ html[data-look="glass"].dark {
   --border: rgba(255, 255, 255, .09); --border2: rgba(255, 255, 255, .16); --input: rgba(255, 255, 255, .05);
   --glass: rgba(10, 11, 16, .55); --hover: rgba(255, 255, 255, .28);
 }
-html[data-look="glass"] body {
-  background:
-    radial-gradient(900px 600px at 8% -10%, rgba(37, 99, 235, .22), transparent 60%),
-    radial-gradient(700px 520px at 100% 10%, rgba(124, 58, 237, .18), transparent 60%),
-    radial-gradient(800px 600px at 50% 110%, rgba(15, 118, 110, .16), transparent 60%),
-    var(--bg);
-  background-attachment: fixed;
-}
-html[data-look="glass"].dark body {
-  background:
-    radial-gradient(900px 600px at 8% -10%, rgba(37, 99, 235, .28), transparent 60%),
-    radial-gradient(700px 520px at 100% 10%, rgba(124, 58, 237, .22), transparent 60%),
-    radial-gradient(800px 600px at 50% 110%, rgba(13, 148, 136, .18), transparent 60%),
-    var(--bg);
-  background-attachment: fixed;
-}
+/* No background glow: plain page color behind the frosted cards. */
 html[data-look="glass"] .card, html[data-look="glass"] .kpi, html[data-look="glass"] .prow, html[data-look="glass"] .qlink,
 html[data-look="glass"] .note-card, html[data-look="glass"] .status-chip, html[data-look="glass"] .dialog {
   backdrop-filter: blur(18px) saturate(160%); -webkit-backdrop-filter: blur(18px) saturate(160%);
