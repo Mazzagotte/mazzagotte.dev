@@ -41,6 +41,41 @@ async function statusRows(env) {
   return results;
 }
 
+// Response time for the last 24 hours, one point per hour, for the little sparklines.
+async function sparks(env) {
+  const hour = 3600_000;
+  const end = Math.floor(Date.now() / hour);
+  const { results } = await env.DB.prepare(
+    'SELECT check_id, at / 3600000 AS h, AVG(ms) AS ms, MIN(ok) AS ok FROM check_results WHERE at >= ? GROUP BY check_id, h'
+  ).bind((end - 23) * hour).all();
+  const out = {};
+  for (const r of results) {
+    const i = Math.floor(r.h) - (end - 23);
+    if (i < 0 || i > 23) continue;
+    (out[r.check_id] ||= Array(24).fill(null))[i] = { ms: r.ms == null ? null : Math.round(r.ms), ok: !!r.ok };
+  }
+  return out;
+}
+
+async function search(env, q) {
+  q = String(q || '').trim().slice(0, 80);
+  if (q.length < 2) return { notes: [], links: [] };
+  const like = '%' + q.replace(/[%_\\]/g, (c) => '\\' + c) + '%';
+  const [{ results: notes }, { results: links }] = await Promise.all([
+    env.DB.prepare(
+      `SELECT n.id, n.kind, n.text, n.project_id, n.created_at, p.name AS project_name, p.color, p.initials, p.ink
+         FROM notes n JOIN projects p ON p.id = n.project_id
+        WHERE p.archived = 0 AND n.text LIKE ? ESCAPE '\\' ORDER BY n.created_at DESC LIMIT 8`
+    ).bind(like).all(),
+    env.DB.prepare(
+      `SELECT l.id, l.label, l.url, l.project_id, p.name AS project_name, p.color, p.initials, p.ink
+         FROM links l JOIN projects p ON p.id = l.project_id
+        WHERE p.archived = 0 AND (l.label LIKE ? ESCAPE '\\' OR l.url LIKE ? ESCAPE '\\') ORDER BY l.sort LIMIT 5`
+    ).bind(like, like).all(),
+  ]);
+  return { notes, links };
+}
+
 function monthRange(date) {
   const start = date.slice(0, 8) + '01';
   const [y, m] = start.split('-').map(Number);
@@ -61,7 +96,8 @@ async function moneySummary(env, from, to) {
 async function dashboard(env) {
   const tz = tzOf(env);
   const today = todayLocal(tz);
-  const [projects, links, latest, checks] = await Promise.all([allProjects(env), linksByProject(env), latestNotes(env), statusRows(env)]);
+  const [projects, links, latest, rawChecks, spark] = await Promise.all([allProjects(env), linksByProject(env), latestNotes(env), statusRows(env), sparks(env)]);
+  const checks = rawChecks.map((c) => ({ ...c, spark: spark[c.id] || [] }));
   const { results: todos } = await env.DB.prepare(
     `SELECT n.*, p.name AS project_name, p.color FROM notes n JOIN projects p ON p.id = n.project_id
       WHERE n.kind = 'todo' AND p.archived = 0 ORDER BY n.done, n.created_at DESC LIMIT 12`
@@ -214,8 +250,8 @@ async function monitoring(env) {
   const tz = tzOf(env);
   const today = todayLocal(tz);
   const from = addDays(today, -89);
-  const checks = await statusRows(env);
-  const projects = await allProjects(env);
+  const [rawChecks, projects, spark] = await Promise.all([statusRows(env), allProjects(env), sparks(env)]);
+  const checks = rawChecks.map((c) => ({ ...c, spark: spark[c.id] || [] }));
   // Daily rollup from raw results (day in UTC keeps the query simple and is close enough for a 90-day strip).
   const since = Date.parse(from + 'T00:00:00Z');
   const { results: daily } = await env.DB.prepare(
@@ -321,6 +357,7 @@ export async function handleApi(request, env, ctx) {
   let m;
 
   if (method === 'GET' && path === '/dashboard') return json(await dashboard(env));
+  if (method === 'GET' && path === '/search') return json(await search(env, url.searchParams.get('q')));
   if (method === 'GET' && path === '/projects') return json({ projects: await allProjects(env) });
   if (method === 'POST' && path === '/projects') return json(await createProject(env, await readJson(request)), 201);
   if ((m = path.match(/^\/projects\/([a-z0-9-]+)$/))) {

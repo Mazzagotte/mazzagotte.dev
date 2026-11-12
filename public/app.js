@@ -69,8 +69,33 @@ const ICON = {
   refresh: I('<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>', 16),
   bell: I('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>', 16),
   todo: I('<rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/>'),
+  edit: I('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>', 16),
   emptyNote: I('<rect x="6" y="3" width="13" height="17" rx="2"/><path d="M9 8h7M9 11h7M9 14h4"/>', 40),
 };
+
+// Notes: links become clickable, **bold** and `code` render.
+function fmt(text) {
+  return esc(text)
+    .replace(/(https?:\/\/[^\s<]+[^\s<.,;:!?)\]'"])/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u.replace(/^https?:\/\/(www\.)?/, '')}</a>`)
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+}
+
+// Response time over the last 24 hours as a tiny line; failed hours show as red marks.
+function spark(points, { w = 96, h = 26 } = {}) {
+  const vals = points.map((p) => (p && p.ms != null ? p.ms : null));
+  const have = vals.filter((v) => v != null);
+  if (have.length < 2) return `<svg class="spark" width="${w}" height="${h}" aria-hidden="true"><line x1="0" y1="${h - 1}" x2="${w}" y2="${h - 1}" stroke="var(--border2)" stroke-dasharray="2 3"/></svg>`;
+  const max = Math.max(...have) * 1.1, min = Math.min(...have) * 0.9;
+  const x = (i) => (i / (points.length - 1)) * (w - 4) + 2;
+  const y = (v) => h - 3 - ((v - min) / Math.max(1, max - min)) * (h - 6);
+  let d = '', pen = false;
+  vals.forEach((v, i) => { if (v == null) { pen = false; return; } d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`; pen = true; });
+  const lastI = vals.map((v, i) => (v != null ? i : -1)).filter((i) => i >= 0).pop();
+  const fails = points.map((p, i) => (p && !p.ok ? `<rect x="${(x(i) - 1.5).toFixed(1)}" y="${h - 4}" width="3" height="4" rx="1" fill="var(--bad)"/>` : '')).join('');
+  const area = `${d}L${x(lastI).toFixed(1)},${h}L${x(vals.findIndex((v) => v != null)).toFixed(1)},${h}Z`;
+  return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><path d="${area}" fill="currentColor" opacity=".08"/><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>${fails}</svg>`;
+}
 
 const tile = (p, cls = '') => `<span class="tile ${cls}" aria-hidden="true" style="background:${esc(p.color)};color:${esc(p.ink || '#fff')}">${esc(p.initials)}</span>`;
 const pill = (status) => `<span class="pill ${esc(status)}">${STATUS_LABEL[status] || esc(status)}</span>`;
@@ -92,12 +117,7 @@ function setTheme(dark) {
   document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#09090B' : '#F7F7F8');
 }
 const isDark = () => document.documentElement.classList.contains('dark');
-const LOOKS = { classic: 'Classic', glass: 'Glass & glow', bold: 'Bold & colorful', sharp: 'Minimal & sharp' };
-const currentLook = () => document.documentElement.dataset.look || 'classic';
-function setLook(look) {
-  if (look === 'classic') delete document.documentElement.dataset.look; else document.documentElement.dataset.look = look;
-  localStorage.setItem('look', look);
-}
+
 
 // ---------- routing ----------
 function route() {
@@ -127,9 +147,17 @@ async function render({ quiet } = {}) {
   }
   const views = { dashboard: viewDashboard, projects: viewProjects, project: viewProject, monitoring: viewMonitoring, finances: viewFinances };
   const { crumb, html } = views[r.view](S.data, r);
+  S.loadedAt = Date.now();
   const y = window.scrollY;
-  app.innerHTML = shell(r, html, crumb);
-  if (quiet) window.scrollTo(0, y); else window.scrollTo(0, 0);
+  const swap = () => {
+    app.classList.toggle('quiet', !!quiet);
+    app.innerHTML = shell(r, html, crumb);
+    if (quiet) window.scrollTo(0, y); else window.scrollTo(0, 0);
+  };
+  // Smooth cross-fade between pages where the browser supports it.
+  if (!quiet && S.booted && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.startViewTransition(swap);
+  else swap();
+  S.booted = true;
   document.title = `${crumb} · mazzagotte.dev`;
 }
 
@@ -157,7 +185,7 @@ function shell(r, content, crumb) {
       <button class="nav" data-act="new-project" aria-label="Add project">${ICON.plus}<span class="lbl">Add project</span></button>
     </div>
     <div style="margin-top:auto;display:flex;flex-direction:column;gap:2px">
-      <button class="nav" data-act="look" aria-label="Change look (now ${esc(LOOKS[currentLook()])})">${I('<circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.7-.8 1.7-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.8-1.7 1.7-1.7H16c3.1 0 5.6-2.5 5.6-5.6C21.9 6 17.4 2 12 2z"/>')}<span class="lbl">Look: ${esc(LOOKS[currentLook()])}</span></button>
+      <button class="nav" data-act="shortcuts" aria-label="Keyboard shortcuts">${I('<rect x="2" y="6" width="20" height="12" rx="2.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>')}<span class="lbl">Shortcuts</span><span class="kbd lbl" style="margin-left:auto">?</span></button>
       <button class="nav" data-act="theme" aria-label="${isDark() ? 'Switch to light mode' : 'Switch to dark mode'}">${isDark() ? ICON.sun : ICON.moon}<span class="lbl">${isDark() ? 'Light mode' : 'Dark mode'}</span></button>
     </div>
   </aside>
@@ -165,6 +193,7 @@ function shell(r, content, crumb) {
     <header class="top"><div class="top-in">
       <p class="crumb"><span class="ws">Workspace / </span><b>${esc(crumb)}</b></p>
       <div class="top-actions">
+        <span class="live d-only" title="This page refreshes on its own"><span class="sdot pulse"></span><span id="live-t">Live</span></span>
         <button class="search-btn" data-act="palette" aria-label="Search or jump to (Command K)">${ICON.search}<span class="grow">Search or jump to…</span><span class="kbd hide-sm">⌘K</span></button>
         <button class="btn primary d-only" data-act="new-note">${ICON.plus}<span>New note</span><span class="kbd">N</span></button>
       </div>
@@ -184,7 +213,7 @@ function shell(r, content, crumb) {
 // ---------- dashboard ----------
 function projectCard(p) {
   const latest = p.latest
-    ? `<div class="well"><p class="label">Latest note · ${esc(rel(p.latest.updated_at || p.latest.created_at))}</p><p style="font-size:14px;color:var(--text2)">${esc(p.latest.text)}</p></div>`
+    ? `<div class="well"><p class="label">Latest note · ${esc(rel(p.latest.updated_at || p.latest.created_at))}</p><p class="fmt" style="font-size:14px;color:var(--text2)">${fmt(p.latest.text)}</p></div>`
     : `<div class="empty"><span style="color:var(--muted)">${ICON.emptyNote}</span><span style="display:flex;flex-direction:column;gap:2px"><b style="font-weight:500;color:var(--text2)">Nothing written yet</b><a href="#/p/${esc(p.id)}">Write the first note →</a></span></div>`;
   return `<article class="card stripe rise" style="--c:${esc(p.color)};display:flex;flex-direction:column;gap:14px;padding-top:24px">
     <div class="row" style="align-items:flex-start">${tile(p)}<div style="flex:1;min-width:0"><h3 style="margin:0;font-size:16px;font-weight:600"><a href="#/p/${esc(p.id)}" style="color:inherit">${esc(p.name)}</a></h3><p class="muted" style="margin:2px 0 0;font-size:13px">${esc(p.type)}</p></div>${pill(p.status)}</div>
@@ -213,14 +242,14 @@ function viewDashboard(d) {
   const featuredNote = f && f.latest;
 
   const html = `<div class="page">
-  <div class="page-head rise"><div><p class="muted" style="margin:0 0 4px;font-size:14px">${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p><h1>${greet}, James</h1></div>
+  <div class="page-head rise"><div><p class="muted" style="margin:0 0 4px;font-size:14px">${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p><h1>${greet}, <span class="grad">James</span></h1></div>
     <p class="muted" style="margin:0;font-size:14px">${d.projects.length} projects · ${live} live · ${openTodos} open to-dos</p></div>
   <div class="hscroll m-flex" style="margin:0 -16px 12px;padding:0 16px" aria-label="Site status">${enabled.map((c) => { const p = projectName[c.project_id] || {}; return `<a class="status-chip" href="#/monitoring"><span class="sdot ${!c.last_at ? 'unk' : c.last_ok ? 'glow' : 'bad'}"></span>${esc(p.name || c.project_id)}</a>`; }).join('')}</div>
   <div class="bento">
     ${f ? `<article class="card stripe span4 rows2 rise o2 feat" style="--c:${esc(f.color)};padding:28px;display:flex;flex-direction:column;gap:18px">
       <div class="row" style="align-items:flex-start;gap:14px">${tile(f, 'lg')}<div style="flex:1;min-width:0"><p class="muted" style="margin:0;font-size:12px;font-weight:500;letter-spacing:.04em;text-transform:uppercase">Most recent${featuredNote ? ' · ' + esc(rel(featuredNote.updated_at)) : ''}</p><h2 style="margin:2px 0 0;font-size:26px;font-weight:600;letter-spacing:-.02em">${esc(f.name)}</h2></div>${pill(f.status)}</div>
       <p class="d-only" style="margin:0;font-size:16px;color:var(--body)">${esc(f.description)}</p>
-      ${featuredNote ? `<div class="well"><p class="label">Latest note</p><p style="font-size:15px;color:var(--text2)">${esc(featuredNote.text)}</p></div>` : `<div class="empty"><span>${ICON.emptyNote}</span><span style="display:flex;flex-direction:column;gap:2px"><b style="font-weight:500;color:var(--text2)">No notes yet</b><a href="#/p/${esc(f.id)}">Write the first one →</a></span></div>`}
+      ${featuredNote ? `<div class="well"><p class="label">Latest note</p><p class="fmt" style="font-size:15px;color:var(--text2)">${fmt(featuredNote.text)}</p></div>` : `<div class="empty"><span>${ICON.emptyNote}</span><span style="display:flex;flex-direction:column;gap:2px"><b style="font-weight:500;color:var(--text2)">No notes yet</b><a href="#/p/${esc(f.id)}">Write the first one →</a></span></div>`}
       <div class="d-only" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
         <div class="stat"><b>${f.open_todos}</b><span>Open to-dos</span></div>
         <div class="stat"><b>${(f.links || []).length}</b><span>Links</span></div>
@@ -233,7 +262,7 @@ function viewDashboard(d) {
     </section>
     <section class="card span3 rise d-only" aria-labelledby="st-h">
       <div class="card-head"><h2 id="st-h">Site status</h2><span class="row" style="gap:12px;font-size:12px">${known.length ? (down.length ? `<span class="row" style="gap:6px;color:var(--bad);font-weight:500"><span class="sdot bad"></span>${down.length} down</span>` : '<span class="row" style="gap:6px;font-weight:500"><span class="sdot glow"></span>All up</span>') : '<span class="muted">Waiting for first check</span>'}<a href="#/monitoring" style="font-size:13px">Monitoring →</a></span></div>
-      <div class="rows">${enabled.map((c) => { const p = projectName[c.project_id] || {}; return `<a href="#/monitoring" class="row" style="padding:9px 0;color:var(--text)"><span class="sdot ${!c.last_at ? 'unk' : c.last_ok ? '' : 'bad'}"></span><span style="flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.3"><span style="font-size:14px;font-weight:500">${esc(p.name || c.project_id)}</span><span class="mono muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(host(c.url))}</span></span><span class="muted" style="font-size:12px">${c.last_at ? (c.last_ok ? `${c.last_ms} ms` : esc(c.last_error || 'Down')) : '—'}</span></a>`; }).join('')}</div>
+      <div class="rows">${enabled.map((c) => { const p = projectName[c.project_id] || {}; return `<a href="#/monitoring" class="row" style="padding:9px 0;color:var(--text)"><span class="sdot ${!c.last_at ? 'unk' : c.last_ok ? '' : 'bad'}"></span><span style="flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.3"><span style="font-size:14px;font-weight:500">${esc(p.name || c.project_id)}</span><span class="mono muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(host(c.url))}</span></span><span class="spk ${c.last_at && !c.last_ok ? 'down' : ''}">${spark(c.spark || [], { w: 72, h: 22 })}</span><span class="muted num" style="font-size:12px;min-width:64px;text-align:right">${c.last_at ? (c.last_ok ? `${c.last_ms} ms` : esc(c.last_error || 'Down')) : '—'}</span></a>`; }).join('')}</div>
     </section>
     <section class="card span3 rise o4" aria-labelledby="mo-h" style="display:flex;flex-direction:column;gap:14px">
       <div class="card-head" style="margin:0"><h2 id="mo-h">Money · this month</h2><a href="#/finances" style="font-size:13px">Finances →</a></div>
@@ -310,8 +339,8 @@ function viewProject(d) {
       </form>
       <div style="display:flex;flex-direction:column;gap:10px">
         ${notes.map((n) => `<article class="note-card rise${n.kind === 'todo' && n.done ? ' done' : ''}">
-          <div style="flex:1;min-width:0"><div class="meta"><span class="tag k-${n.kind}">${KIND_LABEL[n.kind]}</span>${n.pinned ? '<span style="font-weight:500;color:var(--body)">Pinned</span>' : ''}<span>· ${esc(rel(n.created_at))}</span>${n.kind === 'todo' ? `<label class="row" style="gap:6px;margin-left:auto;cursor:pointer"><input type="checkbox" data-act="todo" data-id="${n.id}" ${n.done ? 'checked' : ''} style="accent-color:var(--accent)"> Done</label>` : ''}</div><p>${esc(n.text)}</p></div>
-          <div class="acts"><button class="icon-btn${n.pinned ? ' pinned-on' : ''}" data-act="pin" data-id="${n.id}" data-v="${n.pinned ? 0 : 1}" aria-pressed="${!!n.pinned}" aria-label="${n.pinned ? 'Unpin note' : 'Pin note'}" title="${n.pinned ? 'Unpin' : 'Pin'}">${ICON.pin}</button><button class="icon-btn" data-act="del-note" data-id="${n.id}" aria-label="Delete note" title="Delete">${ICON.trash}</button></div>
+          <div style="flex:1;min-width:0"><div class="meta"><span class="tag k-${n.kind}">${KIND_LABEL[n.kind]}</span>${n.pinned ? '<span style="font-weight:500;color:var(--body)">Pinned</span>' : ''}<span>· ${esc(rel(n.created_at))}</span>${n.kind === 'todo' ? `<label class="row" style="gap:6px;margin-left:auto;cursor:pointer"><input type="checkbox" data-act="todo" data-id="${n.id}" ${n.done ? 'checked' : ''} style="accent-color:var(--accent)"> Done</label>` : ''}</div>${S.editing === n.id ? `<form data-form="edit-note" data-id="${n.id}" class="edit-note"><label class="sr" for="en-${n.id}">Edit note</label><textarea class="input" id="en-${n.id}" name="text" rows="3" required maxlength="2000">${esc(n.text)}</textarea><div class="row" style="justify-content:flex-end;gap:8px;margin-top:8px"><button type="button" class="btn small" data-act="cancel-edit">Cancel</button><button class="btn small primary">Save <span class="kbd">⌘↵</span></button></div></form>` : `<p class="fmt" data-act="edit-note" data-id="${n.id}" title="Click to edit">${fmt(n.text)}</p>`}</div>
+          <div class="acts"><button class="icon-btn" data-act="edit-note" data-id="${n.id}" aria-label="Edit note" title="Edit">${ICON.edit}</button><button class="icon-btn${n.pinned ? ' pinned-on' : ''}" data-act="pin" data-id="${n.id}" data-v="${n.pinned ? 0 : 1}" aria-pressed="${!!n.pinned}" aria-label="${n.pinned ? 'Unpin note' : 'Pin note'}" title="${n.pinned ? 'Unpin' : 'Pin'}">${ICON.pin}</button><button class="icon-btn" data-act="del-note" data-id="${n.id}" aria-label="Delete note" title="Delete">${ICON.trash}</button></div>
         </article>`).join('') || `<div class="empty big">${ICON.emptyNote}<b style="color:var(--text)">A clean slate</b><span>Jot down where you left off, a bug to fix, or an idea.</span></div>`}
       </div>` : `
       <div class="card" style="padding:0;overflow:hidden">${d.links.map((l) => `<div class="row" style="padding:14px 18px;border-bottom:1px solid var(--border)"><div style="flex:1;min-width:0"><p style="margin:0;font-weight:500;font-size:14px">${esc(l.label)}</p><p class="mono muted" style="margin:2px 0 0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.url)}</p></div><a href="${esc(l.url)}" target="_blank" rel="noopener" style="font-weight:500;font-size:14px">Open ↗</a><button class="icon-btn" data-act="del-link" data-id="${l.id}" aria-label="Delete link ${esc(l.label)}">${ICON.trash}</button></div>`).join('')}
@@ -319,7 +348,7 @@ function viewProject(d) {
     </section>
     <aside class="narrow">
       <div class="card"><h2 style="margin-bottom:4px">Open to-dos</h2><p class="muted" style="margin:0 0 6px;font-size:13px">From this project's “To do” notes</p>${open.map((t) => `<p style="margin:0;padding:10px 0;border-top:1px solid var(--border);font-size:14px;color:var(--text2)">${esc(t.text)}</p>`).join('') || '<p class="muted" style="margin:0;padding:10px 0;border-top:1px solid var(--border);font-size:14px">All clear.</p>'}</div>
-      <div class="card"><h2 style="margin-bottom:8px">Activity</h2>${d.events.map((e) => `<p style="margin:0;padding:8px 0;border-top:1px solid var(--border);font-size:13px;color:var(--text2);display:flex;justify-content:space-between;gap:10px"><span>${esc(e.text)}</span><span class="muted" style="flex:none">${esc(rel(e.created_at))}</span></p>`).join('') || '<p class="muted" style="margin:0;font-size:13px">Nothing yet.</p>'}</div>
+      <div class="card"><h2 style="margin-bottom:8px">Activity</h2>${d.events.map((e) => `<p style="margin:0;padding:8px 0;border-top:1px solid var(--border);font-size:13px;color:var(--text2);display:flex;justify-content:space-between;gap:10px"><span style="min-width:0;overflow-wrap:anywhere">${esc(e.text)}</span><span class="muted" style="flex:none">${esc(rel(e.created_at))}</span></p>`).join('') || '<p class="muted" style="margin:0;font-size:13px">Nothing yet.</p>'}</div>
       ${d.incidents.length ? `<div class="card"><h2 style="margin-bottom:8px">Incidents</h2>${d.incidents.map((i) => `<p style="margin:0;padding:8px 0;border-top:1px solid var(--border);font-size:13px"><span class="pill ${i.resolved_at ? 'up' : 'down'}" style="margin-right:6px">${i.resolved_at ? 'Resolved' : 'Open'}</span>${esc(i.title)} · <span class="muted">${esc(rel(i.started_at))}</span></p>`).join('')}</div>` : ''}
     </aside>
   </div>
@@ -356,6 +385,7 @@ function viewMonitoring(d) {
     ${enabled.map((c) => { const p = proj[c.project_id] || { color: '#52525B', initials: '?', name: c.project_id }; const state = !c.last_at ? 'off' : c.last_ok ? 'up' : 'down';
       return `<article class="card stripe rise" style="--c:${esc(p.color)};display:flex;flex-direction:column;gap:14px;padding-top:24px">
         <div class="row">${tile(p)}<div style="flex:1;min-width:0"><h2 style="font-size:16px">${esc(p.name)} <span class="muted" style="font-weight:400">· ${esc(c.name)}</span></h2><a class="mono muted" style="font-size:12px" href="${esc(c.url)}" target="_blank" rel="noopener">${esc(host(c.url))} ↗</a></div><span class="pill ${state}">${state === 'up' ? 'Up' : state === 'down' ? 'Down' : 'Waiting'}</span></div>
+        <div class="spk-wide ${state === 'down' ? 'down' : ''}"><div class="row muted" style="justify-content:space-between;font-size:12px;margin-bottom:4px"><span>Response time · 24 h</span><span>${(() => { const v = (c.spark || []).filter((p) => p && p.ms != null).map((p) => p.ms); return v.length ? `avg ${Math.round(v.reduce((a, b) => a + b, 0) / v.length)} ms` : 'no data yet'; })()}</span></div>${spark(c.spark || [], { w: 400, h: 44 })}</div>
         <dl class="metrics"><div><dt>Uptime · 90d</dt><dd>${c.uptime == null ? '—' : (c.uptime * 100).toFixed(c.uptime === 1 ? 0 : 2) + '%'}</dd></div><div><dt>Response</dt><dd>${c.last_ms != null ? c.last_ms + ' ms' : '—'}</dd></div><div><dt>Last result</dt><dd>${c.last_at ? (c.last_ok ? 'HTTP ' + (c.last_status || 'OK') : esc(c.last_error || 'Failed')) : '—'}</dd></div><div><dt>Checked</dt><dd>${esc(rel(c.last_at))}</dd></div></dl>
         <div><div class="strip" role="img" aria-label="${esc(p.name)}: daily uptime for the last 90 days">${strip(c)}</div><div class="row muted" style="justify-content:space-between;margin-top:6px;font-size:12px"><span>90 days ago</span><span>Today</span></div></div>
       </article>`; }).join('')}
@@ -437,12 +467,15 @@ function paletteItems() {
     { label: isDark() ? 'Switch to light mode' : 'Switch to dark mode', hint: '', run: () => { setTheme(!isDark()); closePalette(); render({ quiet: true }); } },
     { label: 'Run uptime checks now', hint: '', run: () => { closePalette(); location.hash = '#/monitoring'; runChecksNow(); } },
     { label: 'Add an expense', hint: '', run: () => { closePalette(); S.showForm = 'entry'; location.hash = '#/finances'; render(); } },
-    ...Object.entries(LOOKS).map(([k, l]) => ({ label: `Look: ${l}${currentLook() === k ? ' (current)' : ''}`, hint: '', run: () => { setLook(k); closePalette(); render({ quiet: true }); toast(`Look: ${l}`); } })),
-  ].filter((a) => m(a.label) || (q && 'look style theme'.includes(q) && a.label.startsWith('Look')));
+    { label: 'Keyboard shortcuts', hint: '?', run: () => { closePalette(); showShortcuts(); } },
+  ].filter((a) => m(a.label));
   const pages = [['Dashboard', '#/'], ['Projects', '#/projects'], ['Monitoring', '#/monitoring'], ['Finances', '#/finances']]
     .filter(([l]) => m(l)).map(([label, href]) => ({ label, href }));
   const projects = S.projects.filter((p) => m(p.name)).map((p) => ({ label: p.name, href: '#/p/' + p.id, p }));
-  return [...actions.map((a) => ({ ...a, group: 'Actions' })), ...projects.map((x) => ({ ...x, group: 'Projects' })), ...pages.map((x) => ({ ...x, group: 'Pages' }))];
+  const found = S.palette.found && S.palette.found.q === q ? S.palette.found : { notes: [], links: [] };
+  const notes = found.notes.map((n) => ({ label: n.text, sub: `${n.project_name} · ${KIND_LABEL[n.kind] || 'Note'}`, href: '#/p/' + n.project_id, p: { color: n.color, ink: n.ink, initials: n.initials } }));
+  const links = found.links.map((l) => ({ label: `${l.label} — ${host(l.url)}`, sub: l.project_name, url: l.url, p: { color: l.color, ink: l.ink, initials: l.initials } }));
+  return [...actions.map((a) => ({ ...a, group: 'Actions' })), ...projects.map((x) => ({ ...x, group: 'Projects' })), ...notes.map((x) => ({ ...x, group: 'Notes' })), ...links.map((x) => ({ ...x, group: 'Links' })), ...pages.map((x) => ({ ...x, group: 'Pages' }))];
 }
 
 function drawPalette() {
@@ -470,26 +503,45 @@ function drawPalette() {
     const head = it.group !== group ? `<p class="grp">${it.group}</p>` : '';
     group = it.group;
     const icon = it.p ? tile(it.p, 'sm') : `<span class="tile sm" style="background:var(--subtle);color:var(--body)" aria-hidden="true">${it.href ? '→' : '+'}</span>`;
-    const inner = `${icon}<span class="grow">${esc(it.label)}</span>${it.hint ? `<span class="kbd">${esc(it.hint)}</span>` : ''}`;
+    const inner = `${icon}<span class="grow">${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</span>${it.hint ? `<span class="kbd">${esc(it.hint)}</span>` : it.url ? '<span class="muted">↗</span>' : ''}`;
+    if (it.url) return head + `<a class="cmd${i === P.sel ? ' sel' : ''}" href="${esc(it.url)}" target="_blank" rel="noopener" data-act="close-palette" data-i="${i}">${inner}</a>`;
     return head + (it.href ? `<a class="cmd${i === P.sel ? ' sel' : ''}" href="${it.href}" data-act="close-palette" data-i="${i}">${inner}</a>` : `<button class="cmd${i === P.sel ? ' sel' : ''}" data-act="cmd" data-i="${i}">${inner}</button>`);
   }).join('');
   el.innerHTML = `<div class="scrim" data-act="scrim"><div class="dialog" role="dialog" aria-modal="true" aria-label="Command menu">
-    <div class="cmd-in">${ICON.search}<label class="sr" for="cmdq">Search</label><input id="cmdq" placeholder="Type a command or search…" autocomplete="off" value="${esc(P.q || '')}"><span class="kbd">esc</span></div>
+    <div class="cmd-in">${ICON.search}<label class="sr" for="cmdq">Search</label><input id="cmdq" placeholder="Search projects, notes, links, or type a command…" autocomplete="off" value="${esc(P.q || '')}"><span class="kbd">esc</span></div>
     <div class="cmd-list">${list || '<p class="muted" style="padding:24px;text-align:center;margin:0">No matches.</p>'}</div>
     <div class="cmd-foot"><span><span class="kbd">↑↓</span> move</span><span><span class="kbd">↵</span> open</span><span><span class="kbd">esc</span> close</span></div></div></div>`;
   const input = $('#cmdq');
   input.focus();
   input.setSelectionRange(input.value.length, input.value.length);
-  input.addEventListener('input', () => { P.q = input.value; P.sel = 0; drawPalette(); });
+  input.addEventListener('input', () => {
+    P.q = input.value; P.sel = 0; drawPalette();
+    // Search note text and links as you type (after a short pause).
+    clearTimeout(P.timer);
+    const q = P.q.trim().toLowerCase();
+    if (q.length >= 2) P.timer = setTimeout(async () => {
+      try { const r = await api('/search?q=' + encodeURIComponent(q)); if (S.palette === P && P.q.trim().toLowerCase() === q) { P.found = { q, ...r }; drawPalette(); } } catch { /* ignore */ }
+    }, 160);
+  });
   input.addEventListener('keydown', (e) => {
     const n = items.length;
     if (e.key === 'ArrowDown') { e.preventDefault(); P.sel = (P.sel + 1) % Math.max(1, n); drawPalette(); }
     if (e.key === 'ArrowUp') { e.preventDefault(); P.sel = (P.sel - 1 + n) % Math.max(1, n); drawPalette(); }
-    if (e.key === 'Enter' && items[P.sel]) { e.preventDefault(); const it = items[P.sel]; if (it.href) { closePalette(); location.hash = it.href; } else it.run(); }
+    if (e.key === 'Enter' && items[P.sel]) { e.preventDefault(); const it = items[P.sel]; if (it.url) { closePalette(); window.open(it.url, '_blank', 'noopener'); } else if (it.href) { closePalette(); location.hash = it.href; } else it.run(); }
   });
 }
 function openPalette(mode = 'search') { S.palette = { mode, q: '', sel: 0 }; drawPalette(); }
 function closePalette() { S.palette = null; drawPalette(); }
+
+// ---------- shortcuts sheet ----------
+const SHORTCUTS = [['⌘ K', 'Search or run a command'], ['N', 'New note'], ['G then D', 'Go to Dashboard'], ['G then P', 'Go to Projects'], ['G then M', 'Go to Monitoring'], ['G then F', 'Go to Finances'], ['R', 'Refresh now'], ['T', 'Light / dark mode'], ['⌘ ↵', 'Save a note'], ['Esc', 'Close or cancel'], ['?', 'This list']];
+function showShortcuts() {
+  S.palette = { mode: 'help' };
+  $('#overlay').innerHTML = `<div class="scrim" data-act="scrim"><div class="dialog" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" style="max-width:440px"><div class="pad">
+    <div class="row" style="justify-content:space-between"><h2>Keyboard shortcuts</h2><span class="kbd">esc</span></div>
+    <dl class="keys">${SHORTCUTS.map(([k, l]) => `<div><dt>${l}</dt><dd>${k.split(' ').map((x) => (x === 'then' ? '<span class="muted">then</span>' : `<span class="kbd">${x}</span>`)).join(' ')}</dd></div>`).join('')}</dl>
+  </div></div></div>`;
+}
 
 // ---------- project dialog ----------
 function projectDialog(p) {
@@ -542,7 +594,7 @@ document.addEventListener('click', async (e) => {
     switch (act) {
       case 'side': S.collapsed = !S.collapsed; localStorage.setItem('side', S.collapsed ? 'collapsed' : 'open'); render({ quiet: true }); break;
       case 'theme': setTheme(!isDark()); render({ quiet: true }); break;
-      case 'look': { const keys = Object.keys(LOOKS); const next = keys[(keys.indexOf(currentLook()) + 1) % keys.length]; setLook(next); render({ quiet: true }); toast(`Look: ${LOOKS[next]}`); break; }
+      case 'shortcuts': showShortcuts(); break;
       case 'palette': openPalette(); break;
       case 'new-note': openPalette('note'); break;
       case 'close-palette': if (t.tagName !== 'A') e.preventDefault(); closePalette(); break;
@@ -553,6 +605,8 @@ document.addEventListener('click', async (e) => {
       case 'filter': S.filter = v; render({ quiet: true }); break;
       case 'tab': S.tab = v; render({ quiet: true }); break;
       case 'kind': S.kind = v; t.parentElement.querySelectorAll('.kind').forEach((b) => b.setAttribute('aria-pressed', String(b === t))); break;
+      case 'edit-note': if (e.target.closest('a')) break; S.editing = Number(id); render({ quiet: true }); setTimeout(() => { const ta = $(`#en-${id}`); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } }, 0); break;
+      case 'cancel-edit': S.editing = null; render({ quiet: true }); break;
       case 'pin': await api('/notes/' + id, { method: 'PATCH', body: { pinned: v === '1' } }); render({ quiet: true }); break;
       case 'del-note': {
         const { note } = await api('/notes/' + id, { method: 'DELETE' });
@@ -625,6 +679,7 @@ document.addEventListener('submit', async (e) => {
         render({ quiet: true });
         break;
       }
+      case 'edit-note': await api('/notes/' + f.dataset.id, { method: 'PATCH', body: { text: data.text } }); S.editing = null; toast('Note saved'); render({ quiet: true }); break;
       case 'link': await api('/links', { method: 'POST', body: { project_id: route().id, ...data } }); S.showForm = null; toast('Link added'); render({ quiet: true }); break;
       case 'check': await api('/checks', { method: 'POST', body: data }); S.showForm = null; toast('Check added — it runs within a minute'); render({ quiet: true }); break;
       case 'entry': await api('/ledger', { method: 'POST', body: data }); S.showForm = null; toast('Entry saved'); render({ quiet: true }); break;
@@ -651,13 +706,56 @@ document.addEventListener('keydown', (e) => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); S.palette ? closePalette() : openPalette(); return; }
   if (e.key === 'Escape' && $('#overlay').innerHTML) { e.preventDefault(); closePalette(); return; }
+  if (e.key === 'Escape' && S.editing) { e.preventDefault(); S.editing = null; render({ quiet: true }); return; }
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && e.target.tagName === 'TEXTAREA') { e.preventDefault(); e.target.form && e.target.form.requestSubmit(); return; }
-  if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'n' && !$('#overlay').innerHTML) { e.preventDefault(); openPalette('note'); }
+  if (typing || e.metaKey || e.ctrlKey || e.altKey || $('#overlay').innerHTML) return;
+  const k = e.key.toLowerCase();
+  if (S.gPending) {
+    S.gPending = false;
+    const to = { d: '#/', p: '#/projects', m: '#/monitoring', f: '#/finances' }[k];
+    if (to) { e.preventDefault(); location.hash = to; }
+    return;
+  }
+  if (k === 'g') { S.gPending = true; setTimeout(() => { S.gPending = false; }, 1200); return; }
+  if (k === 'n') { e.preventDefault(); openPalette('note'); }
+  if (k === '?') { e.preventDefault(); showShortcuts(); }
+  if (k === 'r') { e.preventDefault(); render({ quiet: true }).then(() => toast('Up to date')); }
+  if (k === 't') { e.preventDefault(); setTheme(!isDark()); render({ quiet: true }); }
 });
 
-window.addEventListener('hashchange', () => { S.showForm = null; S.tab = 'notes'; closePalette(); render(); });
-// Refresh quietly every minute so status and activity stay current while the page is open.
-setInterval(() => { if (!S.palette && !S.showForm && !document.hidden && !document.activeElement.matches('input,textarea,select')) render({ quiet: true }); }, 60_000);
+window.addEventListener('hashchange', () => { S.showForm = null; S.editing = null; S.tab = 'notes'; closePalette(); render(); });
+
+// Live: refresh quietly every 30 seconds while the page is open, and as soon as you come back to it.
+const busy = () => S.palette || S.showForm || S.editing || document.hidden || document.activeElement.matches('input,textarea,select');
+setInterval(() => { if (!busy()) render({ quiet: true }); }, 30_000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && S.loadedAt && Date.now() - S.loadedAt > 10_000 && !busy()) render({ quiet: true }); });
+setInterval(() => {
+  const el = $('#live-t'); if (!el || !S.loadedAt) return;
+  const s = Math.round((Date.now() - S.loadedAt) / 1000);
+  el.textContent = s < 10 ? 'Live' : s < 60 ? `Updated ${s}s ago` : `Updated ${Math.round(s / 60)} min ago`;
+}, 5_000);
+
+// Phone: pull down from the top to refresh.
+(() => {
+  let y0 = null, dy = 0;
+  const ind = document.createElement('div'); ind.className = 'ptr'; ind.innerHTML = ICON.refresh; document.body.appendChild(ind);
+  addEventListener('touchstart', (e) => { y0 = window.scrollY <= 0 && !$('#overlay').innerHTML ? e.touches[0].clientY : null; dy = 0; }, { passive: true });
+  addEventListener('touchmove', (e) => {
+    if (y0 == null) return;
+    dy = Math.max(0, e.touches[0].clientY - y0);
+    ind.style.transform = `translate(-50%, ${Math.min(dy, 110) * 0.6}px) rotate(${dy * 2.5}deg)`;
+    ind.style.opacity = Math.min(1, dy / 80);
+    ind.classList.toggle('ready', dy > 90);
+  }, { passive: true });
+  addEventListener('touchend', async () => {
+    if (y0 == null) return;
+    const go = dy > 90; y0 = null;
+    if (go) { ind.classList.add('spinning'); await render({ quiet: true }); }
+    ind.classList.remove('spinning', 'ready'); ind.style.transform = ''; ind.style.opacity = 0;
+  });
+})();
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+// First load: show a skeleton of the dashboard instead of a blank page.
+app.innerHTML = `<div class="skel-page"><div class="sk" style="width:180px;height:14px"></div><div class="sk" style="width:340px;height:34px;margin:10px 0 28px"></div><div class="skel-grid"><div class="sk big"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div>`;
 render();

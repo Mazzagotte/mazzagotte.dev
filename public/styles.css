@@ -349,3 +349,136 @@ html { -webkit-tap-highlight-color: transparent; }
   .sheet-actions > * { flex: 1; }
   .table-wrap.collapse { display: none; }
 }
+
+/* =========================================================
+   Modern finish (v3): depth, glow and motion on the Classic look
+   ========================================================= */
+:root {
+  --ring: rgba(9, 9, 11, .06); --hi: rgba(255, 255, 255, .9);
+  --card-shadow: 0 1px 2px rgba(9, 9, 11, .04), 0 2px 8px -2px rgba(9, 9, 11, .05);
+  --card-lift: 0 2px 4px rgba(9, 9, 11, .04), 0 16px 40px -12px rgba(9, 9, 11, .16);
+  --accent2: #6366F1;
+}
+html.dark {
+  --ring: rgba(255, 255, 255, .06); --hi: rgba(255, 255, 255, .05);
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, .4); --card-lift: 0 18px 44px -12px rgba(0, 0, 0, .7);
+  --surface: #121215; --well: #18181C;
+}
+::selection { background: color-mix(in srgb, var(--accent) 25%, transparent); }
+body { font-feature-settings: "ss01", "cv11"; }
+.num, .stat b, .kpi .v, .metrics dd, .feed .who span { font-variant-numeric: tabular-nums; }
+* { scrollbar-width: thin; scrollbar-color: var(--border2) transparent; }
+
+/* Cards: hairline highlight on top, soft layered shadow, smoother corners */
+.card, .kpi, .note-card, .qlink, .prow, .status-chip, .stat, .metrics div {
+  box-shadow: inset 0 1px 0 var(--hi), var(--card-shadow);
+}
+.stat, .metrics div { box-shadow: inset 0 1px 0 var(--hi); background: color-mix(in srgb, var(--well) 55%, var(--surface)); }
+.card { border-radius: 20px; }
+.card, .kpi, .note-card, .qlink, .prow { transition: transform .25s cubic-bezier(.2, .7, .2, 1), box-shadow .25s ease, border-color .25s ease; }
+@media (hover: hover) {
+  article.card.stripe:hover, .kpi:hover, .qlink:hover, .prow:hover { transform: translateY(-2px); box-shadow: inset 0 1px 0 var(--hi), var(--card-lift); border-color: color-mix(in srgb, var(--c, var(--accent)) 35%, var(--border)); }
+  .note-card:hover { box-shadow: inset 0 1px 0 var(--hi), var(--card-lift); }
+}
+
+/* Project stripe: thinner, fades out, and glows in the project color */
+.stripe::before { height: 3px; background: linear-gradient(90deg, var(--c, var(--accent)), color-mix(in srgb, var(--c, var(--accent)) 30%, transparent)); box-shadow: 0 0 16px 1px color-mix(in srgb, var(--c, var(--accent)) 55%, transparent); }
+
+/* The featured project: a soft wash of its color in the corner and a colored halo */
+.feat { background:
+  radial-gradient(420px 260px at 100% 0%, color-mix(in srgb, var(--c) 12%, transparent), transparent 70%),
+  var(--surface);
+  box-shadow: inset 0 1px 0 var(--hi), 0 24px 60px -28px color-mix(in srgb, var(--c) 60%, transparent), var(--card-shadow); }
+.feat .tile.lg, .proj-head .tile.lg { box-shadow: 0 8px 22px -6px color-mix(in srgb, var(--c) 70%, transparent), inset 0 1px 0 rgba(255, 255, 255, .25); }
+.tile { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 -1px 0 rgba(0, 0, 0, .12); }
+
+/* Greeting name in a blue-to-violet gradient */
+.grad { background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+html.dark .grad { background-image: linear-gradient(90deg, #60A5FA, #A78BFA); }
+.page-head h1 { letter-spacing: -.035em; }
+
+/* Buttons: primary gets a gentle gradient and a colored shadow; everything presses in */
+.btn.primary, .tabbar .plus button { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent)); border-color: color-mix(in srgb, var(--accent) 80%, #000);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 6px 18px -6px color-mix(in srgb, var(--accent) 70%, transparent); }
+.tabbar .plus button { background: linear-gradient(135deg, #3B82F6, #6366F1); }
+.btn, .chip, .filter, .kind, .icon-btn, .nav, .cmd { transition: background-color .15s, border-color .15s, color .15s, transform .12s, box-shadow .2s; }
+.btn:active, .chip:active, .filter:active, .kind:active, .prow:active, .tabbar a:active, .tabbar .plus button:active { transform: scale(.97); }
+.btn:not(.primary):not(.dark) { box-shadow: inset 0 1px 0 var(--hi), 0 1px 2px rgba(9, 9, 11, .05); }
+.filter.on, .seg button.on, .kind[aria-pressed="true"] { box-shadow: 0 4px 12px -4px rgba(9, 9, 11, .35); }
+
+/* Sidebar: active page gets an accent marker */
+.nav { position: relative; }
+.nav.on::before { content: ""; position: absolute; left: -12px; top: 9px; bottom: 9px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+.side .nav .dot { box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 0%, transparent); }
+.nav.on .dot { box-shadow: 0 0 10px 1px var(--c, currentColor); }
+
+/* Status dots glow; healthy ones softly pulse */
+.sdot:not(.bad):not(.unk):not(.off) { box-shadow: 0 0 8px 1px color-mix(in srgb, var(--good) 65%, transparent); }
+.sdot.bad { box-shadow: 0 0 10px 1px color-mix(in srgb, var(--bad) 70%, transparent); }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 55%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+.sdot.pulse, .sdot.glow { animation: pulse 2.2s ease-out infinite; }
+.live { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; margin-right: 4px; }
+
+/* Sparklines */
+.spark { display: block; overflow: visible; }
+.spk { color: var(--good); flex: none; opacity: .9; }
+.spk.down, .spk-wide.down { color: var(--bad); }
+.spk-wide { color: var(--accent); }
+.spk-wide .spark { width: 100%; height: 44px; }
+.rows > a:hover .spk { opacity: 1; }
+
+/* Notes: formatted text, inline editing */
+.fmt { cursor: text; }
+.fmt a { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--link) 35%, transparent); text-underline-offset: 2px; overflow-wrap: anywhere; }
+.fmt code, .note-card code { font-family: 'Geist Mono', ui-monospace, monospace; font-size: .88em; padding: 1px 5px; border-radius: 5px; background: var(--subtle); border: 1px solid var(--border); }
+.edit-note textarea { min-height: 96px; }
+.note-card .acts .icon-btn { opacity: .55; }
+.note-card:hover .acts .icon-btn, .note-card .acts .icon-btn:focus-visible, .note-card .acts .pinned-on { opacity: 1; }
+@media (hover: none) { .note-card .acts .icon-btn { opacity: 1; } }
+
+/* Command menu results with a second line */
+.cmd .grow small { display: block; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd { min-height: 46px; }
+.dialog { border-radius: 18px; box-shadow: inset 0 1px 0 var(--hi), var(--pop); }
+.scrim { background: rgba(9, 9, 11, .38); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+
+/* Shortcuts list */
+.keys { margin: 0; display: flex; flex-direction: column; }
+.keys div { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--border); font-size: 14px; }
+.keys dt { color: var(--text2); } .keys dd { margin: 0; display: flex; gap: 4px; align-items: center; font-size: 12px; }
+
+/* Quiet refreshes don't replay the entrance animation */
+.quiet .rise { animation: none; }
+
+/* Page-to-page cross-fade (View Transitions) */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .22s; animation-timing-function: cubic-bezier(.2, .7, .2, 1); }
+
+/* Toasts: glassy */
+.toast { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, .08); }
+
+/* First-load skeleton */
+@keyframes shimmer { from { background-position: -400px 0; } to { background-position: 400px 0; } }
+.skel-page { max-width: 1200px; margin: 0 auto; padding: 96px 32px 32px 280px; }
+.sk { border-radius: 12px; background: linear-gradient(90deg, var(--subtle) 0, var(--well) 40%, var(--subtle) 80%) 0 0 / 800px 100%; animation: shimmer 1.3s linear infinite; height: 160px; }
+.skel-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+.skel-grid .big { grid-row: span 2; height: 340px; }
+
+/* Pull to refresh (phone) */
+.ptr { position: fixed; top: calc(env(safe-area-inset-top) + 10px); left: 50%; z-index: 40; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--surface); color: var(--muted); border: 1px solid var(--border); box-shadow: var(--card-lift); opacity: 0; transform: translate(-50%, 0); pointer-events: none; }
+.ptr.ready { color: var(--accent); }
+.ptr.spinning svg { animation: spin .8s linear infinite; }
+
+@media (max-width: 860px) {
+  .skel-page { padding: 80px 16px; }
+  .skel-grid { grid-template-columns: 1fr; }
+  .card { border-radius: 18px; }
+  .tabbar { box-shadow: 0 -8px 30px -12px rgba(9, 9, 11, .15); }
+  .tabbar a.on { position: relative; }
+  .tabbar a.on::after { content: ""; position: absolute; top: 2px; width: 18px; height: 3px; border-radius: 3px; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .spk { display: none; }
+}
+
+/* Long words, codes and web addresses wrap instead of spilling out of their box */
+.card, .kpi, .note-card, .todo, .feed, .dialog, .toast, .well, .empty { overflow-wrap: anywhere; }
+.row > *, .feed li > *, .note-card > * { min-width: 0; }
