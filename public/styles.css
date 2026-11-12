@@ -267,7 +267,7 @@ html.dark .badge:not(.wait) { background: #10291A; color: #86EFAC; } html.dark .
   .tabbar a { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 52px; justify-content: center; color: var(--muted); font-size: 11px; font-weight: 500; }
   .tabbar a.on { color: var(--text); }
   .tabbar .plus { flex: 1; display: flex; justify-content: center; }
-  .tabbar .plus button { width: 56px; height: 56px; margin-top: -26px; border-radius: 18px; border: 0; background: var(--accent); color: #fff; display: grid; place-items: center; box-shadow: 0 10px 24px rgba(37, 99, 235, .35), 0 0 0 5px var(--bg); }
+  .tabbar .plus button { width: 56px; height: 56px; margin-top: -26px; border-radius: 18px; border: 0; background: var(--accent); color: #fff; display: grid; place-items: center; box-shadow: 0 6px 16px rgba(37, 99, 235, .22), 0 0 0 5px var(--bg); }
   .scrim { padding: 0; align-items: flex-end; }
   .dialog { border-radius: 20px 20px 0 0; max-width: none; }
 }
@@ -382,14 +382,14 @@ body { font-feature-settings: "ss01", "cv11"; }
 }
 
 /* Project stripe: thinner, fades out, and glows in the project color */
-.stripe::before { height: 3px; background: linear-gradient(90deg, var(--c, var(--accent)), color-mix(in srgb, var(--c, var(--accent)) 30%, transparent)); box-shadow: 0 0 16px 1px color-mix(in srgb, var(--c, var(--accent)) 55%, transparent); }
+.stripe::before { height: 3px; background: linear-gradient(90deg, var(--c, var(--accent)), color-mix(in srgb, var(--c, var(--accent)) 30%, transparent)); box-shadow: 0 0 10px 0 color-mix(in srgb, var(--c, var(--accent)) 30%, transparent); }
 
 /* The featured project: a soft wash of its color in the corner and a colored halo */
 .feat { background:
-  radial-gradient(420px 260px at 100% 0%, color-mix(in srgb, var(--c) 12%, transparent), transparent 70%),
+  radial-gradient(420px 260px at 100% 0%, color-mix(in srgb, var(--c) 7%, transparent), transparent 70%),
   var(--surface);
-  box-shadow: inset 0 1px 0 var(--hi), 0 24px 60px -28px color-mix(in srgb, var(--c) 60%, transparent), var(--card-shadow); }
-.feat .tile.lg, .proj-head .tile.lg { box-shadow: 0 8px 22px -6px color-mix(in srgb, var(--c) 70%, transparent), inset 0 1px 0 rgba(255, 255, 255, .25); }
+  box-shadow: inset 0 1px 0 var(--hi), 0 20px 50px -30px color-mix(in srgb, var(--c) 35%, transparent), var(--card-shadow); }
+.feat .tile.lg, .proj-head .tile.lg { box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--c) 45%, transparent), inset 0 1px 0 rgba(255, 255, 255, .25); }
 .tile { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 -1px 0 rgba(0, 0, 0, .12); }
 
 /* Greeting name in a blue-to-violet gradient */
@@ -399,7 +399,7 @@ html.dark .grad { background-image: linear-gradient(90deg, #60A5FA, #A78BFA); }
 
 /* Buttons: primary gets a gentle gradient and a colored shadow; everything presses in */
 .btn.primary, .tabbar .plus button { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent)); border-color: color-mix(in srgb, var(--accent) 80%, #000);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 6px 18px -6px color-mix(in srgb, var(--accent) 70%, transparent); }
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 4px 12px -6px color-mix(in srgb, var(--accent) 45%, transparent); }
 .tabbar .plus button { background: linear-gradient(135deg, #3B82F6, #6366F1); }
 .btn, .chip, .filter, .kind, .icon-btn, .nav, .cmd { transition: background-color .15s, border-color .15s, color .15s, transform .12s, box-shadow .2s; }
 .btn:active, .chip:active, .filter:active, .kind:active, .prow:active, .tabbar a:active, .tabbar .plus button:active { transform: scale(.97); }
@@ -408,14 +408,14 @@ html.dark .grad { background-image: linear-gradient(90deg, #60A5FA, #A78BFA); }
 
 /* Sidebar: active page gets an accent marker */
 .nav { position: relative; }
-.nav.on::before { content: ""; position: absolute; left: -12px; top: 9px; bottom: 9px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+.nav.on::before { content: ""; position: absolute; left: -12px; top: 9px; bottom: 9px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
 .side .nav .dot { box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 0%, transparent); }
-.nav.on .dot { box-shadow: 0 0 10px 1px var(--c, currentColor); }
+.nav.on .dot { box-shadow: 0 0 6px 0 var(--c, currentColor); }
 
 /* Status dots glow; healthy ones softly pulse */
-.sdot:not(.bad):not(.unk):not(.off) { box-shadow: 0 0 8px 1px color-mix(in srgb, var(--good) 65%, transparent); }
-.sdot.bad { box-shadow: 0 0 10px 1px color-mix(in srgb, var(--bad) 70%, transparent); }
-@keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 55%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+.sdot:not(.bad):not(.unk):not(.off) { box-shadow: 0 0 5px 0 color-mix(in srgb, var(--good) 45%, transparent); }
+.sdot.bad { box-shadow: 0 0 6px 0 color-mix(in srgb, var(--bad) 50%, transparent); }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 35%, transparent); } 70% { box-shadow: 0 0 0 5px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 .sdot.pulse, .sdot.glow { animation: pulse 2.2s ease-out infinite; }
 .live { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; margin-right: 4px; }
 
@@ -475,7 +475,7 @@ html.dark .grad { background-image: linear-gradient(90deg, #60A5FA, #A78BFA); }
   .card { border-radius: 18px; }
   .tabbar { box-shadow: 0 -8px 30px -12px rgba(9, 9, 11, .15); }
   .tabbar a.on { position: relative; }
-  .tabbar a.on::after { content: ""; position: absolute; top: 2px; width: 18px; height: 3px; border-radius: 3px; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .tabbar a.on::after { content: ""; position: absolute; top: 2px; width: 18px; height: 3px; border-radius: 3px; background: var(--accent); }
   .spk { display: none; }
 }
 
