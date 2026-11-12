@@ -571,6 +571,21 @@ export async function handleApi(request, env, ctx) {
       return json({ ok: true });
     }
   }
+  // Turn a one-time cost into a repeating bill; the entry already logged becomes its first charge.
+  if ((m = path.match(/^\/ledger\/(\d+)\/recur$/)) && method === 'POST') {
+    const b = await readJson(request);
+    const row = await env.DB.prepare('SELECT * FROM ledger WHERE id = ?').bind(Number(m[1])).first();
+    if (!row) throw new HttpError(404, 'No such entry');
+    if (row.kind === 'income' || row.source !== 'manual') throw new HttpError(400, 'Only one-time costs you added can become a bill');
+    const cadence = b.cadence === 'yearly' ? 'yearly' : 'monthly';
+    const next = addMonths(row.occurred_on, cadence === 'yearly' ? 12 : 1);
+    const r = await env.DB.prepare('INSERT INTO recurring (project_id, name, amount_cents, cadence, next_on, active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)')
+      .bind(row.project_id, row.description, row.amount_cents, cadence, next, Date.now()).run();
+    const rid = r.meta.last_row_id;
+    await env.DB.prepare("UPDATE ledger SET source = 'recurring', external_id = ? WHERE id = ?").bind(`rec:${rid}:${row.occurred_on}`, row.id).run();
+    await postRecurring(env);
+    return json(await env.DB.prepare('SELECT * FROM recurring WHERE id = ?').bind(rid).first(), 201);
+  }
   if (method === 'POST' && path === '/recurring') return json(await createRecurring(env, await readJson(request)), 201);
   if ((m = path.match(/^\/recurring\/(\d+)$/))) {
     if (method === 'PATCH') {

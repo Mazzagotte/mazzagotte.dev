@@ -639,3 +639,6 @@ button.site-row.on { background: color-mix(in srgb, var(--accent) 8%, transparen
 .oc-edit { cursor: pointer; border-radius: 6px; }
 .oc-edit:hover > span:first-child { color: var(--link); }
 .oc-row .icon-btn { width: 32px; height: 32px; }
+.recur-box { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--well); }
+.recur-box > .lu { color: var(--accent); }
+.recur-box b { font-size: 14px; }
