@@ -172,10 +172,26 @@ async function getProject(env, id) {
     env.DB.prepare('SELECT * FROM links WHERE project_id = ? ORDER BY sort, id').bind(id).all(),
     env.DB.prepare('SELECT * FROM notes WHERE project_id = ? ORDER BY pinned DESC, created_at DESC, id DESC').bind(id).all(),
     env.DB.prepare('SELECT * FROM incidents WHERE project_id = ? ORDER BY started_at DESC LIMIT 10').bind(id).all(),
-    env.DB.prepare('SELECT * FROM events WHERE project_id = ? ORDER BY created_at DESC, id DESC LIMIT 10').bind(id).all(),
+    // Activity = things that happened (deploys, outages, money, finished to-dos), not notes you just wrote.
+    env.DB.prepare(`SELECT * FROM events WHERE project_id = ? AND source != 'note' AND text NOT LIKE 'Added a %' AND text NOT LIKE 'Added an %'
+      ORDER BY created_at DESC, id DESC LIMIT 10`).bind(id).all(),
   ]);
   const checks = (await statusRows(env)).filter((c) => c.project_id === id);
-  return { project: p, links, notes, incidents, events, checks };
+  // Key facts for the header.
+  const today = todayLocal(tzOf(env));
+  const [mFrom, mTo] = monthRange(today);
+  const since = Date.now() - 30 * 86400_000;
+  const [money, up, deploy, { results: files }] = await Promise.all([
+    moneySummary(env, mFrom, mTo, id),
+    checks.length ? env.DB.prepare(`SELECT COUNT(*) AS total, SUM(ok) AS ok, AVG(ms) AS ms FROM check_results WHERE at >= ? AND check_id IN (${checks.map(() => '?').join(',')})`).bind(since, ...checks.map((c) => c.id)).first() : null,
+    env.DB.prepare("SELECT * FROM events WHERE project_id = ? AND source IN ('deploy', 'railway') AND text LIKE '%deploy%' ORDER BY created_at DESC LIMIT 1").bind(id).first(),
+    env.DB.prepare('SELECT f.* FROM note_files f JOIN notes n ON n.id = f.note_id WHERE n.project_id = ? ORDER BY f.created_at').bind(id).all(),
+  ]);
+  const facts = {
+    uptime: up && up.total ? up.ok / up.total : null, avg_ms: up && up.ms ? Math.round(up.ms) : null,
+    income: money.income, costs: money.costs, last_deploy: deploy,
+  };
+  return { project: p, links, notes, incidents, events, checks, facts, files };
 }
 
 async function createProject(env, b) {
@@ -217,7 +233,7 @@ async function createNote(env, b) {
   const r = await env.DB.prepare('INSERT INTO notes (project_id, kind, text, pinned, done, created_at, updated_at, due_on, sort) VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?)')
     .bind(project, kind, text, now, now, due, kind === 'todo' ? top : null).run();
   const label = { note: 'a note', todo: 'a to-do', idea: 'an idea', rule: 'a rule', infra: 'an infra note' }[kind];
-  await logEvent(env, { project, text: `Added ${label}: ${text.length > 90 ? text.slice(0, 88) + '…' : text}` });
+  await logEvent(env, { project, source: 'note', text: `Added ${label}: ${text.length > 90 ? text.slice(0, 88) + '…' : text}` });
   return env.DB.prepare('SELECT * FROM notes WHERE id = ?').bind(r.meta.last_row_id).first();
 }
 
@@ -246,7 +262,39 @@ async function restoreNote(env, b) {
   const kind = NOTE_KINDS.includes(n.kind) ? n.kind : 'note';
   const r = await env.DB.prepare('INSERT INTO notes (project_id, kind, text, pinned, done, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .bind(n.project_id, kind, String(n.text).slice(0, 2000), n.pinned ? 1 : 0, n.done ? 1 : 0, Number(n.created_at) || Date.now(), Date.now()).run();
-  return env.DB.prepare('SELECT * FROM notes WHERE id = ?').bind(r.meta.last_row_id).first();
+  const nid = r.meta.last_row_id;
+  if (n.due_on || n.sort != null) await env.DB.prepare('UPDATE notes SET due_on = ?, sort = ? WHERE id = ?').bind(DATE_RE.test(n.due_on || '') ? n.due_on : null, n.sort ?? null, nid).run();
+  const fileIds = (Array.isArray(b.files) ? b.files : []).map(Number).filter(Number.isFinite);
+  if (fileIds.length) await env.DB.prepare(`UPDATE note_files SET note_id = ?, orphaned_at = NULL WHERE id IN (${fileIds.map(() => '?').join(',')}) AND note_id IS NULL`).bind(nid, ...fileIds).run();
+  return env.DB.prepare('SELECT * FROM notes WHERE id = ?').bind(nid).first();
+}
+
+// ---------- files on notes ----------
+const MAX_FILE = 25 * 1024 * 1024;
+async function uploadFile(env, request, noteId) {
+  if (!env.FILES) throw new HttpError(503, 'File storage is not connected');
+  const note = await env.DB.prepare('SELECT id, project_id FROM notes WHERE id = ?').bind(noteId).first();
+  if (!note) throw new HttpError(404, 'No such note');
+  const form = await request.formData().catch(() => null);
+  const file = form && form.get('file');
+  if (!file || typeof file === 'string') throw new HttpError(400, 'Choose a file');
+  if (file.size > MAX_FILE) throw new HttpError(413, 'Files can be up to 25 MB');
+  const name = String(file.name || 'file').slice(0, 120);
+  // Only types we can show or download safely; anything else is stored as a plain download.
+  const type = /^(image\/(png|jpe?g|gif|webp|avif|heic)|application\/pdf|text\/plain|text\/csv|application\/zip|application\/json|application\/vnd\.openxmlformats-officedocument\.[\w.]+|application\/msword|application\/vnd\.ms-excel)$/i.test(file.type || '') ? file.type : 'application/octet-stream';
+  const key = `notes/${note.project_id}/${noteId}/${crypto.randomUUID()}`;
+  await env.FILES.put(key, file.stream(), { httpMetadata: { contentType: type } });
+  const r = await env.DB.prepare('INSERT INTO note_files (note_id, project_id, key, name, type, size, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(noteId, note.project_id, key, name, type, file.size, Date.now()).run();
+  return env.DB.prepare('SELECT * FROM note_files WHERE id = ?').bind(r.meta.last_row_id).first();
+}
+
+// Daily: remove files whose note was deleted more than a day ago (past the Undo window).
+export async function cleanupFiles(env) {
+  const { results } = await env.DB.prepare('SELECT id, key FROM note_files WHERE note_id IS NULL AND orphaned_at < ?').bind(Date.now() - 86400_000).all();
+  if (!results.length) return;
+  if (env.FILES) await env.FILES.delete(results.map((f) => f.key));
+  await env.DB.batch(results.map((f) => env.DB.prepare('DELETE FROM note_files WHERE id = ?').bind(f.id)));
 }
 
 // ---------- links ----------
@@ -567,11 +615,42 @@ export async function handleApi(request, env, ctx) {
     if (method === 'DELETE') {
       const note = await env.DB.prepare('SELECT * FROM notes WHERE id = ?').bind(Number(m[1])).first();
       if (!note) throw new HttpError(404, 'No such note');
-      await env.DB.prepare('DELETE FROM notes WHERE id = ?').bind(note.id).run();
-      return json({ ok: true, note });
+      const { results: nf } = await env.DB.prepare('SELECT id FROM note_files WHERE note_id = ?').bind(note.id).all();
+      await env.DB.batch([
+        env.DB.prepare('UPDATE note_files SET note_id = NULL, orphaned_at = ? WHERE note_id = ?').bind(Date.now(), note.id),
+        env.DB.prepare('DELETE FROM notes WHERE id = ?').bind(note.id),
+      ]);
+      return json({ ok: true, note, files: nf.map((f) => f.id) });
     }
   }
 
+  if (method === 'POST' && path === '/links/order') {
+    const b = await readJson(request);
+    const ids = (Array.isArray(b.ids) ? b.ids : []).map(Number).filter(Number.isFinite).slice(0, 200);
+    if (ids.length) await env.DB.batch(ids.map((lid, i) => env.DB.prepare('UPDATE links SET sort = ? WHERE id = ?').bind(i + 1, lid)));
+    return json({ ok: true });
+  }
+  if ((m = path.match(/^\/notes\/(\d+)\/files$/)) && method === 'POST') return json(await uploadFile(env, request, Number(m[1])), 201);
+  if ((m = path.match(/^\/files\/(\d+)$/))) {
+    const f = await env.DB.prepare('SELECT * FROM note_files WHERE id = ?').bind(Number(m[1])).first();
+    if (!f) throw new HttpError(404, 'No such file');
+    if (method === 'DELETE') {
+      if (env.FILES) await env.FILES.delete(f.key);
+      await env.DB.prepare('DELETE FROM note_files WHERE id = ?').bind(f.id).run();
+      return json({ ok: true });
+    }
+    if (method === 'GET') {
+      const obj = env.FILES && await env.FILES.get(f.key);
+      if (!obj) throw new HttpError(404, 'File is missing');
+      const inline = /^image\/(png|jpe?g|gif|webp|avif)$/.test(f.type) || f.type === 'application/pdf';
+      const safe = f.name.replace(/[^\w.\- ]+/g, '_');
+      return new Response(obj.body, { headers: {
+        'content-type': f.type, 'content-length': String(f.size), 'cache-control': 'private, max-age=86400',
+        'content-disposition': `${inline && url.searchParams.get('dl') !== '1' ? 'inline' : 'attachment'}; filename="${safe}"`,
+        'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox",
+      } });
+    }
+  }
   if (method === 'POST' && path === '/links') return json(await createLink(env, await readJson(request)), 201);
   if ((m = path.match(/^\/links\/(\d+)$/)) && method === 'DELETE') {
     await env.DB.prepare('DELETE FROM links WHERE id = ?').bind(Number(m[1])).run();

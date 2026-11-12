@@ -1,5 +1,5 @@
 // mazzagotte.dev service worker: push alerts + a cached app shell.
-const VERSION = 'hub-v5';
+const VERSION = 'hub-v6';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/lucide.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/badge-96.png'];
 
 self.addEventListener('install', (e) => {

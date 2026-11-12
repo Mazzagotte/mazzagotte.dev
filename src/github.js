@@ -39,11 +39,11 @@ export async function repoFeed(env, target, { fresh = false } = {}) {
   try {
     // In a monorepo, collect commits for the app's folder plus any shared folders, newest first.
     const paths = path ? [path, ...also] : [''];
-    const [info, ...lists] = await Promise.all([gh(env, `/repos/${repo}`), ...paths.map((p) => gh(env, `/repos/${repo}/commits?per_page=8${p ? '&path=' + encodeURIComponent(p) : ''}`))]);
+    const [info, ...lists] = await Promise.all([gh(env, `/repos/${repo}`), ...paths.map((p) => gh(env, `/repos/${repo}/commits?per_page=5${p ? '&path=' + encodeURIComponent(p) : ''}`))]);
     const seen = new Map();
     lists.forEach((list, i) => list.forEach((c) => { if (!seen.has(c.sha)) seen.set(c.sha, { ...c, shared: i > 0 }); }));
     const when = (c) => Date.parse((c.commit.author && c.commit.author.date) || c.commit.committer.date);
-    const commits = [...seen.values()].sort((a, b) => when(b) - when(a)).slice(0, 8);
+    const commits = [...seen.values()].sort((a, b) => when(b) - when(a)).slice(0, 5);
     const head = commits[0];
     let build = null;
     if (head) {

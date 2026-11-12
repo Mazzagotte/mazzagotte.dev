@@ -18,6 +18,8 @@ const S = {
   fin: { kind: 'all', site: '', q: '', limit: 50 },
   gh: {},
   todo: { project: '', showDone: false },
+  nf: { kind: 'all', q: '' },
+  pending: [],
   palette: null, // { mode: 'search' | 'note', q, sel, project, kindForNote }
   data: null,
   undo: null,
@@ -314,7 +316,8 @@ function ghCard(g) {
   return head(`<button class="icon-btn" data-act="gh-refresh" aria-label="Refresh GitHub" title="Refresh">${ICON.refresh}</button>`) + `
     <a class="gh-repo" href="${esc(g.url)}" target="_blank" rel="noopener"><span class="mono">${esc(g.repo)}${g.path ? `<span class="muted">/${esc(g.path)}</span>` : ''}</span>${g.private ? '<span class="pill off">Private</span>' : ''}${L('arrow-up-right', 13)}</a>
     <p class="muted gh-meta">${build ? `<span class="pill ${build[0]}">${build[1]}</span>` : ''}<span>${L('git-branch', 12)}${esc(g.branch)}</span><span>Pushed ${esc(rel(Date.parse(g.pushed_at)))}</span></p>
-    <ol class="gh-commits">${(g.commits || []).map((c) => `<li><a href="${esc(c.url)}" target="_blank" rel="noopener"><span class="msg">${esc(c.message)}</span><span class="muted">${c.shared ? '<span class="tag k-note" style="padding:0 5px;font-size:10px">Shared</span> ' : ''}<span class="mono">${esc(c.sha)}</span> · ${esc(c.author)} · ${esc(rel(c.at))}</span></a></li>`).join('') || '<li class="muted">No commits yet.</li>'}</ol>
+    <ol class="gh-commits">${(g.commits || []).slice(0, 3).map((c) => `<li><a href="${esc(c.url)}" target="_blank" rel="noopener"><span class="msg">${esc(c.message)}</span><span class="muted">${c.shared ? '<span class="tag k-note" style="padding:0 5px;font-size:10px">Shared</span> ' : ''}<span class="mono">${esc(c.sha)}</span> · ${esc(c.author)} · ${esc(rel(c.at))}</span></a></li>`).join('') || '<li class="muted">No commits yet.</li>'}</ol>
+    <a class="gh-all" href="${esc(g.url.includes('/tree/') ? g.url.replace('/tree/', '/commits/') : g.url + '/commits')}" target="_blank" rel="noopener">See all commits on GitHub ${L('arrow-up-right', 12)}</a>
     ${g.stale ? `<p class="muted" style="margin:6px 0 0;font-size:12px">Showing the last saved copy — ${esc(g.stale)}.</p>` : ''}`;
 }
 async function loadGitHub(id, fresh) {
@@ -367,36 +370,55 @@ function viewTodos(d) {
   ${open.length ? '' : `<div class="empty big rise" style="margin-top:16px">${L('list-checks', 36)}<b style="color:var(--text)">All clear</b><span>Nothing to do${T.project ? ' for this project' : ''}. Add one above.</span></div>`}
   ${groups.filter(([, , , items]) => items.length).map(([k, label, icon, items]) => `<section class="tgroup rise ${k}" aria-label="${label}">
     <h2 class="ih">${L(icon, 16)}${label}<span class="count-pill">${items.length}</span></h2>
-    <div class="card tlist" data-group="${k}">${items.map(row).join('')}</div></section>`).join('')}
+    <div class="card tlist" data-group="${k}" data-sortable="todos">${items.map(row).join('')}</div></section>`).join('')}
   ${done.length ? `<section class="tgroup rise" aria-label="Done"><button class="tdone-toggle" data-act="todo-done-toggle">${L(T.showDone ? 'chevron-right' : 'chevron-right', 16, T.showDone ? 'rot' : '')}Done in the last 2 weeks<span class="count-pill">${done.length}</span></button>
     ${T.showDone ? `<div class="card tlist">${done.map(row).join('')}</div>` : ''}</section>` : ''}
 </div>`;
   return { crumb: 'To-dos', html };
 }
 
-// Drag to reorder (works with mouse and touch). Moves stay within a group.
+// Drag to reorder (mouse and touch) in any [data-sortable] container; moves stay inside it.
 (() => {
-  let row = null, list = null, moved = false;
+  let item = null, list = null, moved = false;
   document.addEventListener('pointerdown', (e) => {
-    const g = e.target.closest('.trow .grip'); if (!g) return;
-    row = g.closest('.trow'); list = row.parentElement; moved = false;
-    row.classList.add('dragging'); g.setPointerCapture(e.pointerId); e.preventDefault();
+    const g = e.target.closest('[data-sortable] .grip'); if (!g) return;
+    item = g.closest('[data-id]'); list = item.parentElement; moved = false;
+    item.classList.add('dragging'); g.setPointerCapture(e.pointerId); e.preventDefault();
   });
   document.addEventListener('pointermove', (e) => {
-    if (!row) return;
-    const sibs = [...list.querySelectorAll('.trow:not(.dragging)')];
-    const after = sibs.find((s) => { const r = s.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
-    if (after) { if (after !== row.nextElementSibling) { list.insertBefore(row, after); moved = true; } }
-    else if (list.lastElementChild !== row) { list.appendChild(row); moved = true; }
+    if (!item) return;
+    const sibs = [...list.querySelectorAll(':scope > [data-id]:not(.dragging)')];
+    const grid = sibs.length > 1 && Math.abs(sibs[0].getBoundingClientRect().top - sibs[1].getBoundingClientRect().top) < 4;
+    const over = sibs.find((s) => { const r = s.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; });
+    if (over) {
+      const r = over.getBoundingClientRect();
+      const before = grid ? e.clientX < r.left + r.width / 2 : e.clientY < r.top + r.height / 2;
+      const ref = before ? over : over.nextElementSibling;
+      if (ref !== item && item.nextElementSibling !== ref) { list.insertBefore(item, ref); moved = true; }
+    } else if (!grid) {
+      const after = sibs.find((s) => { const r = s.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+      const ref = after || (sibs.length ? sibs[sibs.length - 1].nextElementSibling : null);
+      if (ref !== item && item.nextElementSibling !== ref) { list.insertBefore(item, ref); moved = true; }
+    }
   });
   const end = async () => {
-    if (!row) return;
-    row.classList.remove('dragging'); row = null;
+    if (!item) return;
+    item.classList.remove('dragging');
+    const kind = list.dataset.sortable; item = null;
     if (!moved) return;
-    const ids = [...document.querySelectorAll('.tlist .trow')].map((r) => Number(r.dataset.id));
-    const order = new Map(ids.map((id, i) => [id, i]));
-    S.data.todos.sort((a, b) => (order.get(a.id) ?? 1e9) - (order.get(b.id) ?? 1e9));
-    try { await api('/todos/order', { method: 'POST', body: { ids } }); } catch (err) { fail(err); }
+    try {
+      if (kind === 'todos') {
+        const ids = [...document.querySelectorAll('[data-sortable="todos"] > [data-id]')].map((r) => Number(r.dataset.id));
+        const order = new Map(ids.map((id, i) => [id, i]));
+        S.data.todos.sort((a, b) => (order.get(a.id) ?? 1e9) - (order.get(b.id) ?? 1e9));
+        await api('/todos/order', { method: 'POST', body: { ids } });
+      } else if (kind === 'links') {
+        const ids = [...list.querySelectorAll(':scope > [data-id]')].map((r) => Number(r.dataset.id));
+        const order = new Map(ids.map((id, i) => [id, i]));
+        S.data.links.sort((a, b) => (order.get(a.id) ?? 1e9) - (order.get(b.id) ?? 1e9));
+        await api('/links/order', { method: 'POST', body: { ids } });
+      }
+    } catch (err) { fail(err); }
   };
   document.addEventListener('pointerup', end); document.addEventListener('pointercancel', end);
 })();
@@ -412,23 +434,56 @@ function viewProjects(d) {
 }
 
 // ---------- project ----------
+const fileSize = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB');
+const isImg = (t) => /^image\/(png|jpe?g|gif|webp|avif)$/.test(t);
+function filesBlock(files) {
+  if (!files || !files.length) return '';
+  return `<div class="files">${files.map((f) => isImg(f.type)
+    ? `<div class="fthumb"><a href="/api/files/${f.id}" target="_blank" rel="noopener" title="${esc(f.name)}"><img src="/api/files/${f.id}" alt="${esc(f.name)}" loading="lazy"></a><button class="fdel" data-act="del-file" data-id="${f.id}" aria-label="Remove ${esc(f.name)}">${L('x', 12)}</button></div>`
+    : `<div class="fchip"><a href="/api/files/${f.id}?dl=1" title="Download ${esc(f.name)}">${L(f.type === 'application/pdf' ? 'file-text' : 'file', 15)}<span class="fn">${esc(f.name)}</span><span class="muted">${fileSize(f.size)}</span></a><button class="fdel" data-act="del-file" data-id="${f.id}" aria-label="Remove ${esc(f.name)}">${L('x', 12)}</button></div>`).join('')}</div>`;
+}
+const favicon = (u) => `<img class="fav" src="https://icons.duckduckgo.com/ip3/${encodeURIComponent(host(u))}.ico" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">`;
+const shortUrl = (u) => { try { const x = new URL(u); return (x.host.replace(/^www\./, '') + (x.pathname === '/' ? '' : x.pathname)).replace(/\/$/, ''); } catch { return u; } };
+
 function viewProject(d) {
   const p = d.project;
   const notes = d.notes;
-  const open = notes.filter((n) => n.kind === 'todo' && !n.done);
+  const NF = S.nf;
+  const open = notes.filter((n) => n.kind === 'todo' && !n.done).sort((a, b) => (a.due_on || '9999').localeCompare(b.due_on || '9999'));
   const kinds = ['note', 'todo', 'idea', 'rule', 'infra'];
   const checks = d.checks.filter((c) => c.enabled);
+  const filesBy = {};
+  for (const f of d.files || []) (filesBy[f.note_id] ||= []).push(f);
+  const q = NF.q.trim().toLowerCase();
+  const shown = notes.filter((n) => (NF.kind === 'all' || n.kind === NF.kind) && (!q || n.text.toLowerCase().includes(q) || (filesBy[n.id] || []).some((f) => f.name.toLowerCase().includes(q))));
+  const count = (k) => notes.filter((n) => k === 'all' || n.kind === k).length;
+  const F = d.facts || {};
+  const down = checks.some((c) => c.last_at && !c.last_ok);
+  const dep = F.last_deploy;
+  const depBad = dep && /fail/i.test(dep.text);
   const html = `<div class="page">
-  <div class="card stripe rise proj-head" style="--c:${esc(p.color)};padding:28px;margin-bottom:20px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:20px">
+  <div class="card stripe rise proj-head" style="--c:${esc(p.color)};padding:28px 28px 22px;margin-bottom:20px">
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:20px">
     <div class="row" style="align-items:flex-start;gap:16px;min-width:0">${tile(p, 'lg')}<div style="min-width:0">
       <div class="row" style="flex-wrap:wrap;gap:10px"><h1 style="margin:0;font-size:30px;line-height:1.15;font-weight:600;letter-spacing:-.03em">${esc(p.name)}</h1>${pill(p.status)}</div>
       <p class="muted" style="margin:6px 0 0;max-width:620px">${esc(p.description)}</p>
-      <p class="muted" style="margin:10px 0 0;font-size:13px;display:flex;flex-wrap:wrap;gap:6px 16px">${p.type ? `<span>${esc(p.type)}</span>` : ''}${p.hosting ? `<span>${esc(p.hosting)}</span>` : ''}${checks.map((c) => `<span class="row" style="gap:6px"><span class="sdot ${!c.last_at ? 'unk' : c.last_ok ? '' : 'bad'}"></span>${esc(c.name)} ${c.last_at ? (c.last_ok ? 'up' : 'down') : ''}</span>`).join('')}</p>
+      <p class="muted" style="margin:10px 0 0;font-size:13px;display:flex;flex-wrap:wrap;gap:6px 16px">${p.type ? `<span>${esc(p.type)}</span>` : ''}${p.hosting ? `<span>${esc(p.hosting)}</span>` : ''}</p>
     </div></div>
-    <div class="row acts" style="gap:10px;flex-wrap:wrap;align-items:flex-start"><button class="btn" data-act="edit-project">${L('pencil', 15)}Edit project</button>${p.status !== 'planned' && d.links[0] ? `<a class="btn primary" href="${esc(d.links[0].url)}" target="_blank" rel="noopener">Open ${esc(d.links[0].label.toLowerCase())} ${L('arrow-up-right', 15)}</a>` : ''}</div>
+    <div class="row acts" style="gap:10px;flex-wrap:wrap;align-items:flex-start"><button class="btn" data-act="edit-project">${L('pencil', 15)}Edit project</button>${(() => { const main = d.links.find((l) => /^(site|display|review site|app)$/i.test(l.label)) || d.links.find((l) => !/github\.com|railway\.com|cloudflare\.com/i.test(l.url)); return p.status !== 'planned' && main ? `<a class="btn primary" href="${esc(main.url)}" target="_blank" rel="noopener">Open ${esc(main.label.toLowerCase())} ${L('arrow-up-right', 15)}</a>` : ''; })()}</div>
+    </div>
+    <div class="facts">
+      <a class="fact" href="#/monitoring"><span class="fl">${L('activity', 13)}Status</span><b>${checks.length ? `<span class="sdot ${down ? 'bad' : checks.some((c) => c.last_at) ? '' : 'unk'}"></span>${down ? 'Down' : checks.some((c) => c.last_at) ? 'Up' : 'Waiting'}` : '<span class="muted">No check</span>'}</b></a>
+      <a class="fact" href="#/monitoring"><span class="fl">${L('shield-check', 13)}Uptime · 30d</span><b>${F.uptime == null ? '—' : (F.uptime * 100).toFixed(F.uptime === 1 ? 0 : 2) + '%'}</b></a>
+      <a class="fact" href="#/monitoring"><span class="fl">${L('zap', 13)}Response</span><b>${F.avg_ms == null ? '—' : F.avg_ms + ' ms'}</b></a>
+      <a class="fact" href="#/finances/${esc(p.id)}"><span class="fl">${L('wallet', 13)}This month</span><b>${F.income || F.costs ? `<span class="${F.income - F.costs < 0 ? 'neg' : F.income - F.costs > 0 ? 'pos' : ''}">${money(F.income - F.costs)}</span>` : '<span class="muted">$0</span>'}</b><span class="fs">${money(F.income || 0)} in · ${money(F.costs || 0)} out</span></a>
+      <a class="fact" href="#/monitoring"><span class="fl">${L('git-branch', 13)}Last deploy</span><b>${dep ? `<span class="${depBad ? 'neg' : ''}">${depBad ? 'Failed' : 'OK'}</span> · ${esc(rel(dep.created_at))}` : '<span class="muted">Not reporting</span>'}</b></a>
+    </div>
   </div>
-  <section aria-label="Quick links" class="rise qlinks" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin-bottom:32px">
-    ${d.links.map((l) => `<a class="qlink" href="${esc(l.url)}" target="_blank" rel="noopener"><span class="l">${esc(l.label)}</span><span class="u">${esc(host(l.url))} ${L('arrow-up-right', 13)}</span></a>`).join('')}
+  <section aria-label="Quick links" class="rise qlinks" data-sortable="links">
+    ${d.links.map((l) => `<div class="qlink" data-id="${l.id}">
+      <span class="grip" aria-hidden="true" title="Drag to reorder">${L('grip-vertical', 14)}</span>
+      <a class="qmain" href="${esc(l.url)}" target="_blank" rel="noopener">${favicon(l.url)}<span class="qtext"><span class="l">${esc(l.label)}</span><span class="u" title="${esc(l.url)}">${esc(shortUrl(l.url).replace(/#also=.*/, ''))}</span></span></a>
+      <button class="icon-btn qcopy" data-act="copy-link" data-url="${esc(l.url)}" aria-label="Copy ${esc(l.label)} address" title="Copy address">${L('copy', 14)}</button></div>`).join('')}
     <button class="qlink add" data-act="add-link">+ Add link</button>
   </section>
   ${S.showForm === 'link' ? `<form class="card rise" data-form="link" style="margin:-16px 0 24px;display:flex;flex-direction:column;gap:12px"><div class="form-row"><label class="field"><span>Name</span><input class="input" name="label" required maxlength="40" placeholder="Admin dashboard"></label><label class="field" style="flex:2 1 280px"><span>Web address</span><input class="input" name="url" type="url" required placeholder="https://"></label></div><div class="row" style="justify-content:flex-end;gap:10px"><button type="button" class="btn" data-act="cancel-form">Cancel</button><button class="btn primary">Save link</button></div></form>` : ''}
@@ -436,34 +491,81 @@ function viewProject(d) {
     <section class="wide" aria-label="Notes">
       <div class="tabs" role="tablist"><button class="tab${S.tab === 'notes' ? ' on' : ''}" role="tab" aria-selected="${S.tab === 'notes'}" data-act="tab" data-v="notes">Notes <span class="count-pill">${notes.length}</span></button><button class="tab${S.tab === 'links' ? ' on' : ''}" role="tab" aria-selected="${S.tab === 'links'}" data-act="tab" data-v="links">All links <span class="count-pill">${d.links.length}</span></button></div>
       ${S.tab === 'notes' ? `
-      <form class="card" data-form="note" style="padding:14px;margin-bottom:16px">
+      <form class="card composer" data-form="note" style="padding:14px;margin-bottom:16px">
         <label class="sr" for="note-text">New note</label>
-        <textarea class="input" id="note-text" name="text" rows="3" placeholder="Write a note — a to-do, an idea, where you left off…" required maxlength="2000"></textarea>
+        <textarea class="input" id="note-text" name="text" rows="3" placeholder="Write a note — a to-do, an idea, where you left off… (paste or drop files to attach)" maxlength="2000"></textarea>
+        <div id="pending" class="pending">${pendingChips()}</div>
         <div class="row composer-foot" style="flex-wrap:wrap;justify-content:space-between;margin-top:10px;gap:10px">
           <div class="row kinds" role="group" aria-label="Note type" style="gap:6px;flex-wrap:wrap">${kinds.map((k) => `<button type="button" class="kind" aria-pressed="${S.kind === k}" data-act="kind" data-v="${k}">${L(KIND_ICON[k], 14)}${KIND_LABEL[k]}</button>`).join('')}</div>
-          <label class="due-in"><span class="sr">Due date</span>${L('calendar', 14)}<input type="date" name="due_on" class="input sm" aria-label="Due date (optional)"></label>
-          <button class="btn primary">Add note <span class="kbd">${MOD} ↵</span></button>
+          <div class="row" style="gap:8px;flex-wrap:wrap;justify-content:flex-end">
+            <label class="due-in"><span class="sr">Due date</span>${L('calendar', 14)}<input type="date" name="due_on" class="input sm" aria-label="Due date (optional)"></label>
+            <label class="btn attach" title="Attach files">${L('paperclip', 15)}<span>Attach</span><input type="file" multiple class="sr" data-act="pick-files"></label>
+            <button class="btn primary">Add note <span class="kbd">${MOD} ↵</span></button>
+          </div>
         </div>
       </form>
+      <div class="nfilter">
+        <div class="row hscroll" role="group" aria-label="Show" style="gap:6px">${[['all', 'All'], ['todo', 'To do'], ['idea', 'Ideas'], ['rule', 'Rules'], ['infra', 'Infra'], ['note', 'Notes']].filter(([k]) => k === 'all' || count(k)).map(([k, l]) => `<button class="filter${NF.kind === k ? ' on' : ''}" aria-pressed="${NF.kind === k}" data-act="nf-kind" data-v="${k}">${k === 'all' ? '' : L(KIND_ICON[k], 13)}${l} <span class="count-pill">${count(k)}</span></button>`).join('')}</div>
+        <label class="search-in">${L('search', 15)}<span class="sr">Search notes</span><input class="input sm" id="nf-q" type="search" placeholder="Search notes…" value="${esc(NF.q)}" autocomplete="off"></label>
+      </div>
       <div style="display:flex;flex-direction:column;gap:10px">
-        ${notes.map((n) => `<article class="note-card rise${n.kind === 'todo' && n.done ? ' done' : ''}">
-          <div style="flex:1;min-width:0"><div class="meta">${kindTag(n.kind)}${n.pinned ? '<span style="font-weight:500;color:var(--body)">Pinned</span>' : ''}<span>· ${esc(rel(n.created_at))}</span>${n.kind === 'todo' ? `<label class="row" style="gap:6px;margin-left:auto;cursor:pointer"><input type="checkbox" data-act="todo" data-id="${n.id}" ${n.done ? 'checked' : ''} style="accent-color:var(--accent)"> Done</label>` : ''}</div>${S.editing === n.id ? `<form data-form="edit-note" data-id="${n.id}" class="edit-note"><label class="sr" for="en-${n.id}">Edit note</label><textarea class="input" id="en-${n.id}" name="text" rows="3" required maxlength="2000">${esc(n.text)}</textarea><div class="row" style="justify-content:flex-end;gap:8px;margin-top:8px"><button type="button" class="btn small" data-act="cancel-edit">Cancel</button><button class="btn small primary">Save <span class="kbd">${MOD} ↵</span></button></div></form>` : `<p class="fmt" data-act="edit-note" data-id="${n.id}" title="Click to edit">${fmt(n.text)}</p>`}</div>
-          <div class="acts"><button class="icon-btn" data-act="edit-note" data-id="${n.id}" aria-label="Edit note" title="Edit">${ICON.edit}</button><button class="icon-btn${n.pinned ? ' pinned-on' : ''}" data-act="pin" data-id="${n.id}" data-v="${n.pinned ? 0 : 1}" aria-pressed="${!!n.pinned}" aria-label="${n.pinned ? 'Unpin note' : 'Pin note'}" title="${n.pinned ? 'Unpin' : 'Pin'}">${ICON.pin}</button><button class="icon-btn" data-act="del-note" data-id="${n.id}" aria-label="Delete note" title="Delete">${ICON.trash}</button></div>
-        </article>`).join('') || `<div class="empty big">${ICON.emptyNote}<b style="color:var(--text)">A clean slate</b><span>Jot down where you left off, a bug to fix, or an idea.</span></div>`}
+        ${shown.map((n) => `<article class="note-card rise${n.kind === 'todo' && n.done ? ' done' : ''}" data-note="${n.id}">
+          <div style="flex:1;min-width:0"><div class="meta">${kindTag(n.kind)}${n.pinned ? '<span style="font-weight:500;color:var(--body)">Pinned</span>' : ''}<span>· ${esc(rel(n.created_at))}</span>${n.kind === 'todo' ? dueChip(n.due_on, n.done) : ''}${n.kind === 'todo' ? `<label class="row" style="gap:6px;margin-left:auto;cursor:pointer"><input type="checkbox" data-act="todo" data-id="${n.id}" ${n.done ? 'checked' : ''} style="accent-color:var(--accent)"> Done</label>` : ''}</div>${S.editing === n.id ? `<form data-form="edit-note" data-id="${n.id}" class="edit-note"><label class="sr" for="en-${n.id}">Edit note</label><textarea class="input" id="en-${n.id}" name="text" rows="3" required maxlength="2000">${esc(n.text)}</textarea><div class="row" style="justify-content:flex-end;gap:8px;margin-top:8px"><button type="button" class="btn small" data-act="cancel-edit">Cancel</button><button class="btn small primary">Save <span class="kbd">${MOD} ↵</span></button></div></form>` : `<p class="fmt" data-act="edit-note" data-id="${n.id}" title="Click to edit">${fmt(n.text)}</p>`}${filesBlock(filesBy[n.id])}</div>
+          <div class="acts"><label class="icon-btn" title="Attach files" aria-label="Attach files to this note">${L('paperclip', 16)}<input type="file" multiple class="sr" data-act="note-files" data-id="${n.id}"></label><button class="icon-btn" data-act="edit-note" data-id="${n.id}" aria-label="Edit note" title="Edit">${ICON.edit}</button><button class="icon-btn${n.pinned ? ' pinned-on' : ''}" data-act="pin" data-id="${n.id}" data-v="${n.pinned ? 0 : 1}" aria-pressed="${!!n.pinned}" aria-label="${n.pinned ? 'Unpin note' : 'Pin note'}" title="${n.pinned ? 'Unpin' : 'Pin'}">${ICON.pin}</button><button class="icon-btn" data-act="del-note" data-id="${n.id}" aria-label="Delete note" title="Delete">${ICON.trash}</button></div>
+        </article>`).join('') || (notes.length ? `<p class="muted" style="text-align:center;padding:20px;margin:0">No notes match.</p>` : `<div class="empty big">${ICON.emptyNote}<b style="color:var(--text)">A clean slate</b><span>Jot down where you left off, a bug to fix, or an idea.</span></div>`)}
       </div>` : `
-      <div class="card" style="padding:0;overflow:hidden">${d.links.map((l) => `<div class="row" style="padding:14px 18px;border-bottom:1px solid var(--border)"><div style="flex:1;min-width:0"><p style="margin:0;font-weight:500;font-size:14px">${esc(l.label)}</p><p class="mono muted" style="margin:2px 0 0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.url)}</p></div><a href="${esc(l.url)}" target="_blank" rel="noopener" style="font-weight:500;font-size:14px">Open ↗</a><button class="icon-btn" data-act="del-link" data-id="${l.id}" aria-label="Delete link ${esc(l.label)}">${ICON.trash}</button></div>`).join('')}
+      <div class="card" style="padding:0;overflow:hidden">${d.links.map((l) => `<div class="row" style="padding:14px 18px;border-bottom:1px solid var(--border)">${favicon(l.url)}<div style="flex:1;min-width:0"><p style="margin:0;font-weight:500;font-size:14px">${esc(l.label)}</p><p class="mono muted" style="margin:2px 0 0;font-size:13px;overflow-wrap:anywhere">${esc(l.url)}</p></div><button class="icon-btn" data-act="copy-link" data-url="${esc(l.url)}" aria-label="Copy address">${L('copy', 15)}</button><a href="${esc(l.url)}" target="_blank" rel="noopener" style="font-weight:500;font-size:14px">Open ↗</a><button class="icon-btn" data-act="del-link" data-id="${l.id}" aria-label="Delete link ${esc(l.label)}">${ICON.trash}</button></div>`).join('')}
         <div style="padding:14px 18px"><button class="btn small" data-act="add-link">+ Add a link</button></div></div>`}
     </section>
     <aside class="narrow">
-      <div class="card"><h2 class="ih" style="margin-bottom:4px">${L('list-todo', 16)}Open to-dos</h2><p class="muted" style="margin:0 0 6px;font-size:13px">From this project's “To do” notes</p>${open.map((t) => `<p style="margin:0;padding:10px 0;border-top:1px solid var(--border);font-size:14px;color:var(--text2);display:flex;justify-content:space-between;gap:8px"><span>${esc(t.text)}</span>${dueChip(t.due_on)}</p>`).join('') || '<p class="muted" style="margin:0;padding:10px 0;border-top:1px solid var(--border);font-size:14px">All clear.</p>'}</div>
+      <div class="card"><div class="card-head">${H('ot-h', 'list-todo', 'Open to-dos')}<a href="#/todos" style="font-size:13px">All →</a></div>
+        ${open.map((t) => `<div class="stodo"><input type="checkbox" id="st-${t.id}" data-act="todo" data-id="${t.id}"><label for="st-${t.id}">${esc(t.text)}</label>${dueChip(t.due_on)}</div>`).join('') || '<p class="muted" style="margin:0;padding:10px 0;border-top:1px solid var(--border);font-size:14px">All clear.</p>'}
+        <form class="sadd" data-form="side-todo"><label class="sr" for="sa-t">Add a to-do</label><input class="input sm" id="sa-t" name="text" required maxlength="2000" placeholder="+ Add a to-do" autocomplete="off"><label class="tdate" title="Due date">${L('calendar', 15)}<span class="sr">Due date</span><input type="date" name="due_on"></label></form>
+      </div>
       ${d.links.some((l) => /github\.com\/[\w.-]+\/[\w.-]+/i.test(l.url)) ? `<div class="card gh-card" id="gh">${ghCard(S.gh[p.id])}</div>` : ''}
-      <div class="card"><h2 class="ih" style="margin-bottom:8px">${L('history', 16)}Activity</h2>${d.events.map((e) => `<p style="margin:0;padding:8px 0;border-top:1px solid var(--border);font-size:13px;color:var(--text2);display:flex;justify-content:space-between;gap:10px"><span style="min-width:0;overflow-wrap:anywhere">${esc(e.text)}</span><span class="muted" style="flex:none">${esc(rel(e.created_at))}</span></p>`).join('') || '<p class="muted" style="margin:0;font-size:13px">Nothing yet.</p>'}</div>
+      <div class="card"><h2 class="ih" style="margin-bottom:8px">${L('history', 16)}Activity</h2>${d.events.map((e) => `<p class="ev ${esc(e.level)}"><span style="min-width:0;overflow-wrap:anywhere">${esc(e.text)}</span><span class="muted" style="flex:none">${esc(rel(e.created_at))}</span></p>`).join('') || '<p class="muted" style="margin:0;font-size:13px">Deploys, outages, money and finished to-dos show up here.</p>'}</div>
       ${d.incidents.length ? `<div class="card"><h2 class="ih" style="margin-bottom:8px">${L('circle-alert', 16)}Incidents</h2>${d.incidents.map((i) => `<p style="margin:0;padding:8px 0;border-top:1px solid var(--border);font-size:13px"><span class="pill ${i.resolved_at ? 'up' : 'down'}" style="margin-right:6px">${i.resolved_at ? 'Resolved' : 'Open'}</span>${esc(i.title)} · <span class="muted">${esc(rel(i.started_at))}</span></p>`).join('')}</div>` : ''}
     </aside>
   </div>
 </div>`;
   return { crumb: p.name, html };
 }
+
+// ---------- attachments ----------
+function pendingChips() {
+  return (S.pending || []).map((f, i) => `<span class="fchip pend">${L(isImg(f.type) ? 'image' : 'file', 14)}<span class="fn">${esc(f.name || 'pasted image')}</span><span class="muted">${fileSize(f.size)}</span><button type="button" class="fdel" data-act="unpend" data-i="${i}" aria-label="Remove">${L('x', 12)}</button></span>`).join('');
+}
+function addPending(list) {
+  const files = [...list].filter((f) => f && f.size);
+  const big = files.filter((f) => f.size > 25 * 1024 * 1024);
+  if (big.length) toast(`${big.length === 1 ? big[0].name + ' is' : big.length + ' files are'} over 25 MB`, { error: true });
+  S.pending = [...(S.pending || []), ...files.filter((f) => f.size <= 25 * 1024 * 1024)].slice(0, 10);
+  const el = $('#pending'); if (el) el.innerHTML = pendingChips();
+}
+async function uploadFiles(noteId, files) {
+  if (!files.length) return 0;
+  S.uploading = true;
+  let ok = 0;
+  try {
+    for (const [i, f] of files.entries()) {
+      toast(`Uploading ${i + 1} of ${files.length}…`);
+      const fd = new FormData();
+      fd.append('file', f, f.name || `pasted-${Date.now()}.png`);
+      const res = await fetch(`/api/notes/${noteId}/files`, { method: 'POST', body: fd, credentials: 'same-origin' });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `Upload failed (${res.status})`); }
+      ok++;
+    }
+  } finally { S.uploading = false; }
+  return ok;
+}
+// Paste or drop files into the note box.
+document.addEventListener('paste', (e) => {
+  if (e.target.id !== 'note-text' || !e.clipboardData || !e.clipboardData.files.length) return;
+  e.preventDefault(); addPending(e.clipboardData.files);
+});
+document.addEventListener('dragover', (e) => { const c = e.target.closest && e.target.closest('.composer'); if (c && e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); c.classList.add('drop'); } });
+document.addEventListener('dragleave', (e) => { const c = e.target.closest && e.target.closest('.composer'); if (c && !c.contains(e.relatedTarget)) c.classList.remove('drop'); });
+document.addEventListener('drop', (e) => { const c = e.target.closest && e.target.closest('.composer'); if (!c) return; e.preventDefault(); c.classList.remove('drop'); addPending(e.dataTransfer.files); });
 
 // ---------- monitoring ----------
 function viewMonitoring(d) {
@@ -817,7 +919,7 @@ function openPalette(mode = 'search') { S.palette = { mode, q: '', sel: 0 }; dra
 function closePalette() { S.palette = null; drawPalette(); }
 
 // ---------- shortcuts sheet ----------
-const SHORTCUTS = [[`${MOD} K`, 'Search or run a command'], ['N', 'New note'], ['G then D', 'Go to Dashboard'], ['G then P', 'Go to Projects'], ['G then T', 'Go to To-dos'], ['G then M', 'Go to Monitoring'], ['G then F', 'Go to Finances'], ['R', 'Refresh now'], ['T', 'Light / dark mode'], [`${MOD} ↵`, 'Save a note'], ['Esc', 'Close or cancel'], ['?', 'This list']];
+const SHORTCUTS = [[`${MOD} K`, 'Search or run a command'], ['N', 'New note'], ['G then D', 'Go to Dashboard'], ['G then P', 'Go to Projects'], ['G then T', 'Go to To-dos'], ['G then M', 'Go to Monitoring'], ['G then F', 'Go to Finances'], ['/', 'Search notes (project page)'], ['R', 'Refresh now'], ['T', 'Light / dark mode'], [`${MOD} ↵`, 'Save a note'], ['Esc', 'Close or cancel'], ['?', 'This list']];
 function showShortcuts() {
   S.palette = { mode: 'help' };
   $('#overlay').innerHTML = `<div class="scrim" data-act="scrim"><div class="dialog" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" style="max-width:440px"><div class="pad">
@@ -892,8 +994,8 @@ document.addEventListener('click', async (e) => {
       case 'cancel-edit': S.editing = null; render({ quiet: true }); break;
       case 'pin': await api('/notes/' + id, { method: 'PATCH', body: { pinned: v === '1' } }); render({ quiet: true }); break;
       case 'del-note': {
-        const { note } = await api('/notes/' + id, { method: 'DELETE' });
-        toast('Note deleted', { undo: async () => { await api('/notes/restore', { method: 'POST', body: { note } }); render({ quiet: true }); } });
+        const { note, files } = await api('/notes/' + id, { method: 'DELETE' });
+        toast(note.kind === 'todo' ? 'To-do deleted' : 'Note deleted', { undo: async () => { await api('/notes/restore', { method: 'POST', body: { note, files } }); render({ quiet: true }); } });
         render({ quiet: true });
         break;
       }
@@ -909,6 +1011,10 @@ document.addEventListener('click', async (e) => {
       case 'add-domain': S.showForm = 'domain'; render({ quiet: true }); setTimeout(() => { const i = $('form[data-form="domain"] input'); if (i) i.focus(); }, 0); break;
       case 'edit-domain': { const r = S.data.domains.find((x) => x.id === Number(id)); if (r) { S.palette = { mode: 'domain' }; $('#overlay').innerHTML = `<div class="scrim" data-act="scrim"><div class="dialog" role="dialog" aria-modal="true" aria-label="Edit domain">${domainForm(r, S.data).replace('class="card rise"', 'class="pad"').replace('margin-top:16px;', '')}</div></div>`; } break; }
       case 'del-domain': await api('/renewals/' + id, { method: 'DELETE' }); closePalette(); S.showForm = null; toast('Domain removed'); render({ quiet: true }); break;
+      case 'nf-kind': S.nf.kind = v; render({ quiet: true }); break;
+      case 'copy-link': { e.preventDefault(); try { await navigator.clipboard.writeText(t.dataset.url); toast('Address copied'); } catch { toast('Couldn’t copy — long-press the link instead', { error: true }); } break; }
+      case 'unpend': S.pending.splice(Number(t.dataset.i), 1); $('#pending').innerHTML = pendingChips(); break;
+      case 'del-file': { e.preventDefault(); await api('/files/' + id, { method: 'DELETE' }); toast('File removed'); render({ quiet: true }); break; }
       case 'gh-refresh': loadGitHub(route().id, true); break;
       case 'todo-proj': S.todo.project = v; render({ quiet: true }); break;
       case 'todo-done-toggle': S.todo.showDone = !S.todo.showDone; render({ quiet: true }); break;
@@ -956,6 +1062,8 @@ document.addEventListener('change', async (e) => {
       if (done) toast('To-do done', { undo: async () => { await api('/notes/' + t.dataset.id, { method: 'PATCH', body: { done: false } }); render({ quiet: true }); } });
       render({ quiet: true });
     }
+    if (t.dataset.act === 'pick-files') { addPending(t.files); t.value = ''; return; }
+    if (t.dataset.act === 'note-files') { const n = await uploadFiles(t.dataset.id, [...t.files]); t.value = ''; if (n) toast(`Attached ${n} file${n === 1 ? '' : 's'}`); render({ quiet: true }); return; }
     if (t.dataset.act === 'todo-due') { await api('/notes/' + t.dataset.id, { method: 'PATCH', body: { due_on: t.value || null } }); render({ quiet: true }); }
     if (t.dataset.act === 'rec-on') { await api('/recurring/' + t.dataset.id, { method: 'PATCH', body: { active: t.checked } }); render({ quiet: true }); }
     if (t.dataset.act === 'check-on') {
@@ -975,9 +1083,20 @@ document.addEventListener('submit', async (e) => {
   try {
     switch (f.dataset.form) {
       case 'note': {
-        const note = await api('/notes', { method: 'POST', body: { project_id: route().id, kind: S.kind, text: data.text, due_on: S.kind === 'todo' ? data.due_on : '' } });
-        toast('Note added', { undo: async () => { await api('/notes/' + note.id, { method: 'DELETE' }); render({ quiet: true }); } });
+        const files = S.pending || [];
+        const text = (data.text || '').trim() || (files.length ? (files.length === 1 ? files[0].name || 'Attachment' : `${files.length} attachments`) : '');
+        if (!text) { toast('Write something or attach a file first', { error: true }); break; }
+        const note = await api('/notes', { method: 'POST', body: { project_id: route().id, kind: S.kind, text, due_on: S.kind === 'todo' ? data.due_on : '' } });
+        if (files.length) { await uploadFiles(note.id, files); S.pending = []; }
+        toast(files.length ? `Note added with ${files.length} file${files.length === 1 ? '' : 's'}` : 'Note added', { undo: async () => { await api('/notes/' + note.id, { method: 'DELETE' }); render({ quiet: true }); } });
         render({ quiet: true });
+        break;
+      }
+      case 'side-todo': {
+        await api('/notes', { method: 'POST', body: { project_id: route().id, kind: 'todo', text: data.text, due_on: data.due_on } });
+        toast('To-do added');
+        await render({ quiet: true });
+        const i = $('#sa-t'); if (i) i.focus();
         break;
       }
       case 'quick-note': {
@@ -1033,6 +1152,17 @@ document.addEventListener('submit', async (e) => {
   } catch (err) { fail(err); if (btn) btn.disabled = false; }
 });
 
+// Note search on project pages: filter as you type.
+let nfTimer;
+document.addEventListener('input', (e) => {
+  if (e.target.id !== 'nf-q') return;
+  clearTimeout(nfTimer);
+  nfTimer = setTimeout(async () => {
+    S.nf.q = e.target.value;
+    await render({ quiet: true });
+    const q = $('#nf-q'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+  }, 150);
+});
 // Ledger search: filter as you type, keeping the cursor in the box.
 let finTimer;
 document.addEventListener('input', (e) => {
@@ -1063,14 +1193,15 @@ document.addEventListener('keydown', (e) => {
   if (k === 'g') { S.gPending = true; setTimeout(() => { S.gPending = false; }, 1200); return; }
   if (k === 'n') { e.preventDefault(); openPalette('note'); }
   if (k === '?') { e.preventDefault(); showShortcuts(); }
+  if (k === '/' && $('#nf-q')) { e.preventDefault(); $('#nf-q').focus(); }
   if (k === 'r') { e.preventDefault(); render({ quiet: true }).then(() => toast('Up to date')); }
   if (k === 't') { e.preventDefault(); setTheme(!isDark()); render({ quiet: true }); }
 });
 
-window.addEventListener('hashchange', () => { S.showForm = null; S.editing = null; S.tab = 'notes'; S.fin.kind = 'all'; S.fin.q = ''; S.fin.limit = 50; closePalette(); render(); });
+window.addEventListener('hashchange', () => { S.showForm = null; S.editing = null; S.tab = 'notes'; S.nf = { kind: 'all', q: '' }; S.pending = []; S.fin.kind = 'all'; S.fin.q = ''; S.fin.limit = 50; closePalette(); render(); });
 
 // Live: refresh quietly every 30 seconds while the page is open, and as soon as you come back to it.
-const busy = () => S.palette || S.showForm || S.editing || document.querySelector('.trow.dragging') || document.hidden || document.activeElement.matches('input,textarea,select');
+const busy = () => S.palette || S.showForm || S.editing || S.uploading || (S.pending && S.pending.length) || document.querySelector('.dragging') || document.hidden || document.activeElement.matches('input,textarea,select');
 setInterval(() => { if (!busy()) render({ quiet: true }); }, 30_000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && S.loadedAt && Date.now() - S.loadedAt > 10_000 && !busy()) render({ quiet: true }); });
 setInterval(() => {
