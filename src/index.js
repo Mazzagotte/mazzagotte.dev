@@ -2,6 +2,8 @@
 // Pages and /api sit behind Cloudflare Access (+ a token check here). /hooks/* takes webhooks with their own secrets.
 import { verifyAccess } from './access.js';
 import { handleApi, postRecurring } from './api.js';
+import { runBackups } from './backup.js';
+import { todoMorning } from './todos.js';
 import { pruneResults, runChecks } from './checks.js';
 import { handleHook } from './hooks.js';
 import { HttpError, json, text, zonedParts } from './util.js';
@@ -47,6 +49,10 @@ export default {
       // Once a day (3 AM Mountain), drop check history older than the 90-day window.
       const now = zonedParts(env.TIMEZONE || 'America/Denver');
       if (now.hour === 3 && now.minute === 0) await pruneResults(env).catch((e) => console.log('prune failed', e));
+      // Nightly backup of every database (2:30 AM Mountain).
+      if (now.hour === 2 && now.minute === 30) await runBackups(env, ctx).catch((e) => console.log('backup failed', e));
+      // Morning heads-up for to-dos due today or overdue (8 AM Mountain).
+      if (now.hour === 8 && now.minute === 0) await todoMorning(env, ctx).catch((e) => console.log('todo push failed', e));
       // Post recurring bills that came due (just after midnight Mountain).
       if (now.hour === 0 && now.minute === 5) await postRecurring(env).catch((e) => console.log('recurring failed', e));
     })());

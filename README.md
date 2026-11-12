@@ -120,3 +120,13 @@ npm run dev                      # http://localhost:8787 — run checks with /__
 ```
 
 Pushes to `main` build and deploy automatically through Cloudflare Workers Builds. If one does not appear in the build history, check that the Cloudflare Workers and Pages GitHub app has access to this repo.
+
+## Backups
+
+Every night at 2:30 AM Mountain the hub copies the hub, SpareTime and Ada County USBC databases to the private R2 bucket `mazzagotte-backups` (gzipped JSON, one file per database per day, kept 30 days). See and download them on Monitoring → Backups, or press **Back up now**. A failed backup sends a push alert.
+
+To restore: download the file, then `node scripts/restore.mjs hub-2026-11-12.json.gz > restore.sql` and `npx wrangler d1 execute <database> --remote --file restore.sql`. Check the SQL first; it replaces the rows in every table it contains.
+
+## GitHub feed
+
+Project pages show recent commits and build status for the project's GitHub link. Public repos work without setup; for private repos (and to avoid GitHub's limits) add a read-only fine-grained token as the secret `GITHUB_TOKEN` on the Worker (Contents: read, Metadata: read, Commit statuses: read).

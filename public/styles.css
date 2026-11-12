@@ -642,3 +642,68 @@ button.site-row.on { background: color-mix(in srgb, var(--accent) 8%, transparen
 .recur-box { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--well); }
 .recur-box > .lu { color: var(--accent); }
 .recur-box b { font-size: 14px; }
+
+/* ---------- to-do board ---------- */
+.due { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+.due.today { color: var(--warn); } .due.late { color: var(--bad); }
+.todo .p { gap: 10px; flex-wrap: wrap; }
+.due-in { display: none; align-items: center; gap: 6px; color: var(--muted); }
+.due-in.show, form[data-form="note"]:has(.kind[data-v="todo"][aria-pressed="true"]) .due-in { display: inline-flex; }
+.due-in input { width: auto; }
+.tadd { display: flex; flex-direction: column; gap: 10px; padding: 14px; }
+.tadd > .input { font-size: 16px; }
+.tadd-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tadd-row select { flex: 1 1 180px; max-width: 280px; }
+.tadd-row .btn { margin-left: auto; }
+.tgroup { margin-top: 20px; }
+.tgroup h2 { margin: 0 0 8px; font-size: 14px; font-weight: 600; color: var(--text2); }
+.tgroup h2 .count-pill { margin-left: 2px; }
+.tgroup.late h2, .tgroup.late h2 .lu { color: var(--bad); }
+.tgroup.today h2 .lu { color: var(--warn); }
+.tlist { padding: 0; overflow: hidden; }
+.trow { display: flex; align-items: flex-start; gap: 10px; padding: 12px 12px 12px 6px; border-top: 1px solid var(--border); background: var(--surface); }
+.trow:first-child { border-top: 0; }
+.trow.dragging { position: relative; z-index: 3; box-shadow: var(--card-lift); border-radius: 12px; opacity: .96; }
+.trow .grip { flex: none; color: var(--hover); cursor: grab; touch-action: none; padding: 3px 2px; border-radius: 6px; }
+.trow .grip:hover { color: var(--muted); background: var(--subtle); }
+.trow.dragging .grip { cursor: grabbing; }
+.trow input[type="checkbox"] { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); flex: none; cursor: pointer; }
+.trow.done { padding-left: 14px; }
+.tmain { flex: 1; min-width: 0; }
+.tmain p { margin: 0; font-size: 15px; color: var(--text2); overflow-wrap: anywhere; }
+.trow.done .tmain p { text-decoration: line-through; color: var(--muted); }
+.tmeta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
+.tproj { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.tproj:hover { color: var(--text); }
+.tdate { position: relative; flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); cursor: pointer; }
+.tdate:hover { background: var(--subtle); color: var(--text); }
+.tdate input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.tdate input::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
+.trow .icon-btn { width: 34px; height: 34px; opacity: .5; }
+.trow:hover .icon-btn, .trow .icon-btn:focus-visible { opacity: 1; }
+.tdone-toggle { display: inline-flex; align-items: center; gap: 8px; border: 0; background: none; padding: 4px 0; margin-bottom: 8px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.lu.rot { transform: rotate(90deg); }
+@media (hover: none) { .trow .icon-btn { opacity: 1; } }
+@media (max-width: 860px) {
+  .tadd-row select { max-width: none; }
+  .tadd-row .btn { flex: 1 1 100%; }
+  .trow { gap: 8px; padding: 12px 8px 12px 4px; }
+}
+
+/* ---------- GitHub card ---------- */
+.gh-repo { display: inline-flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; font-weight: 500; margin-top: 4px; max-width: 100%; }
+.gh-repo .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gh-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 8px 0 4px; font-size: 12px; }
+.gh-meta > span { display: inline-flex; align-items: center; gap: 4px; }
+.gh-commits { list-style: none; margin: 6px 0 0; padding: 0; }
+.gh-commits li { border-top: 1px solid var(--border); }
+.gh-commits a { display: flex; flex-direction: column; gap: 2px; padding: 9px 0; color: var(--text2); }
+.gh-commits a:hover .msg { color: var(--link); }
+.gh-commits .msg { font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+.gh-commits .muted { font-size: 11px; }
+.gh-card .card-head .icon-btn { width: 30px; height: 30px; }
+
+/* ---------- backups ---------- */
+.bk-row { padding: 12px 0; border-top: 1px solid var(--border); gap: 10px; flex-wrap: wrap; }
+.bk-pick { width: auto; }
+@media (max-width: 860px) { .bk-row .bk-pick { flex: 1; } }

@@ -1,5 +1,7 @@
 // The hub's API. Everything here sits behind Cloudflare Access (see index.js).
 import { runChecks } from './checks.js';
+import { listBackups, runBackups } from './backup.js';
+import { repoFeed, repoFromUrl } from './github.js';
 import { logEvent } from './events.js';
 import { pushAll, vapidKeys } from './push.js';
 import {
@@ -210,8 +212,10 @@ async function createNote(env, b) {
   const kind = NOTE_KINDS.includes(b.kind) ? b.kind : 'note';
   const text = need(str(b.text, 2000), 'Write something first');
   const now = Date.now();
-  const r = await env.DB.prepare('INSERT INTO notes (project_id, kind, text, pinned, done, created_at, updated_at) VALUES (?, ?, ?, 0, 0, ?, ?)')
-    .bind(project, kind, text, now, now).run();
+  const due = kind === 'todo' && DATE_RE.test(b.due_on || '') ? b.due_on : null;
+  const { s: top } = await env.DB.prepare("SELECT COALESCE(MIN(sort), 0) - 1 AS s FROM notes WHERE kind = 'todo'").first();
+  const r = await env.DB.prepare('INSERT INTO notes (project_id, kind, text, pinned, done, created_at, updated_at, due_on, sort) VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?)')
+    .bind(project, kind, text, now, now, due, kind === 'todo' ? top : null).run();
   const label = { note: 'a note', todo: 'a to-do', idea: 'an idea', rule: 'a rule', infra: 'an infra note' }[kind];
   await logEvent(env, { project, text: `Added ${label}: ${text.length > 90 ? text.slice(0, 88) + '…' : text}` });
   return env.DB.prepare('SELECT * FROM notes WHERE id = ?').bind(r.meta.last_row_id).first();
@@ -222,7 +226,9 @@ async function updateNote(env, id, b) {
   if ('text' in b) { sets.push('text = ?'); vals.push(need(str(b.text, 2000), 'Note is empty')); }
   if ('kind' in b) { if (!NOTE_KINDS.includes(b.kind)) throw new HttpError(400, 'Bad kind'); sets.push('kind = ?'); vals.push(b.kind); }
   if ('pinned' in b) { sets.push('pinned = ?'); vals.push(b.pinned ? 1 : 0); }
-  if ('done' in b) { sets.push('done = ?'); vals.push(b.done ? 1 : 0); }
+  if ('done' in b) { sets.push('done = ?', 'done_at = ?'); vals.push(b.done ? 1 : 0, b.done ? Date.now() : null); }
+  if ('due_on' in b) { if (b.due_on && !DATE_RE.test(b.due_on)) throw new HttpError(400, 'Bad date'); sets.push('due_on = ?'); vals.push(b.due_on || null); }
+  if ('project_id' in b) { const p = await env.DB.prepare('SELECT 1 FROM projects WHERE id = ?').bind(str(b.project_id, 24)).first(); if (!p) throw new HttpError(400, 'No such project'); sets.push('project_id = ?'); vals.push(b.project_id); }
   if (!sets.length) throw new HttpError(400, 'Nothing to change');
   const r = await env.DB.prepare(`UPDATE notes SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).bind(...vals, Date.now(), id).run();
   if (!r.meta.changes) throw new HttpError(404, 'No such note');
@@ -517,6 +523,35 @@ export async function handleApi(request, env, ctx) {
   let m;
 
   if (method === 'GET' && path === '/dashboard') return json(await dashboard(env));
+  if (method === 'GET' && path === '/todos') {
+    const { results } = await env.DB.prepare(
+      `SELECT n.*, p.name AS project_name, p.color, p.initials, p.ink FROM notes n JOIN projects p ON p.id = n.project_id
+        WHERE n.kind = 'todo' AND p.archived = 0 AND (n.done = 0 OR n.done_at IS NULL OR n.done_at > ?)
+        ORDER BY n.done, COALESCE(n.sort, 1e9), n.created_at DESC`
+    ).bind(Date.now() - 14 * 86400_000).all();
+    return json({ today: todayLocal(tzOf(env)), todos: results, projects: await allProjects(env) });
+  }
+  if (method === 'POST' && path === '/todos/order') {
+    const b = await readJson(request);
+    const ids = (Array.isArray(b.ids) ? b.ids : []).map(Number).filter(Number.isFinite).slice(0, 500);
+    if (ids.length) await env.DB.batch(ids.map((id, i) => env.DB.prepare('UPDATE notes SET sort = ? WHERE id = ?').bind(i, id)));
+    return json({ ok: true });
+  }
+  if ((m = path.match(/^\/projects\/([a-z0-9-]+)\/github$/)) && method === 'GET') {
+    const { results } = await env.DB.prepare('SELECT url FROM links WHERE project_id = ? ORDER BY sort, id').bind(m[1]).all();
+    const repo = results.map((l) => repoFromUrl(l.url)).find(Boolean);
+    if (!repo) return json({ none: true });
+    return json(await repoFeed(env, repo, { fresh: url.searchParams.get('fresh') === '1' }));
+  }
+  if (method === 'GET' && path === '/backups') return json(await listBackups(env));
+  if (method === 'POST' && path === '/backups/run') return json({ results: await runBackups(env, ctx) });
+  if (method === 'GET' && path === '/backups/file') {
+    const key = url.searchParams.get('key') || '';
+    if (!/^(hub|sparetime|usbc)\/\d{4}-\d{2}-\d{2}\.json\.gz$/.test(key) || !env.BACKUPS) throw new HttpError(404, 'No such backup');
+    const obj = await env.BACKUPS.get(key);
+    if (!obj) throw new HttpError(404, 'No such backup');
+    return new Response(obj.body, { headers: { 'content-type': 'application/gzip', 'content-disposition': `attachment; filename="${key.replace('/', '-')}"`, 'cache-control': 'no-store' } });
+  }
   if (method === 'GET' && path === '/search') return json(await search(env, url.searchParams.get('q')));
   if (method === 'GET' && path === '/projects') return json({ projects: await allProjects(env) });
   if (method === 'POST' && path === '/projects') return json(await createProject(env, await readJson(request)), 201);

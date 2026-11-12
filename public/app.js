@@ -16,6 +16,8 @@ const S = {
   kind: 'note',
   period: 'month',
   fin: { kind: 'all', site: '', q: '', limit: 50 },
+  gh: {},
+  todo: { project: '', showDone: false },
   palette: null, // { mode: 'search' | 'note', q, sel, project, kindForNote }
   data: null,
   undo: null,
@@ -121,7 +123,7 @@ function route() {
   if (view === 'p' && id) return { view: 'project', id };
   if (view === 'finances' && id === 'domains') return { view: 'domains' };
   if (view === 'finances' && id) return { view: 'finances', id };
-  if (['projects', 'monitoring', 'finances'].includes(view)) return { view };
+  if (['projects', 'monitoring', 'finances', 'todos'].includes(view)) return { view };
   return { view: 'dashboard' };
 }
 
@@ -135,7 +137,8 @@ async function render({ quiet } = {}) {
     if (!S.projects.length) await loadProjects();
     if (r.view === 'dashboard') S.data = await api('/dashboard');
     else if (r.view === 'project') S.data = await api('/projects/' + encodeURIComponent(r.id));
-    else if (r.view === 'monitoring') S.data = await api('/monitoring');
+    else if (r.view === 'monitoring') { const [m, b] = await Promise.all([api('/monitoring'), api('/backups').catch(() => ({ connected: false, databases: [] }))]); S.data = { ...m, backups: b }; }
+    else if (r.view === 'todos') S.data = await api('/todos');
     else if (r.view === 'domains') S.data = await api('/domains');
     else if (r.view === 'finances') S.fin.site = r.id || '', S.data = await api('/finances?' + new URLSearchParams({ period: S.period, kind: S.fin.kind === 'all' ? '' : S.fin.kind, site: S.fin.site, q: S.fin.q, limit: S.fin.limit }));
     else S.data = await api('/dashboard');
@@ -143,7 +146,7 @@ async function render({ quiet } = {}) {
     app.innerHTML = shell(r, `<div class="page"><div class="empty big"><b>Couldn't load this page</b><span>${esc(e.message)}</span><button class="btn" data-act="reload">Try again</button></div></div>`, 'Error');
     return;
   }
-  const views = { dashboard: viewDashboard, projects: viewProjects, project: viewProject, monitoring: viewMonitoring, finances: viewFinances, domains: viewDomains };
+  const views = { dashboard: viewDashboard, projects: viewProjects, project: viewProject, monitoring: viewMonitoring, finances: viewFinances, domains: viewDomains, todos: viewTodos };
   const { crumb, html } = views[r.view](S.data, r);
   S.loadedAt = Date.now();
   const y = window.scrollY;
@@ -151,6 +154,7 @@ async function render({ quiet } = {}) {
     app.classList.toggle('quiet', !!quiet);
     app.innerHTML = shell(r, html, crumb);
     if (quiet) window.scrollTo(0, y); else window.scrollTo(0, 0);
+    if (r.view === 'project') loadGitHub(r.id);
   };
   // Smooth cross-fade between pages where the browser supports it.
   if (!quiet && S.booted && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.startViewTransition(swap);
@@ -174,6 +178,7 @@ function shell(r, content, crumb) {
     <nav aria-label="Main" style="display:flex;flex-direction:column;gap:2px">
       <a class="nav${on('dashboard')}" href="#/" aria-label="Dashboard">${ICON.dash}<span class="lbl">Dashboard</span></a>
       <a class="nav${on('projects')}" href="#/projects" aria-label="Projects">${ICON.folder}<span class="lbl">Projects</span></a>
+      <a class="nav${on('todos')}" href="#/todos" aria-label="To-dos">${L('list-checks')}<span class="lbl">To-dos</span></a>
       <a class="nav${on('monitoring')}" href="#/monitoring" aria-label="Monitoring">${ICON.gauge}<span class="lbl">Monitoring</span></a>
       <a class="nav${on('finances') || on('domains')}" href="#/finances" aria-label="Finances">${ICON.money}<span class="lbl">Finances</span></a>
     </nav>
@@ -271,7 +276,7 @@ function viewDashboard(d) {
         : `<div class="empty">Nothing recorded this month. Tournament Central's $5 charges land here automatically once payments are on; add costs on the Finances page.</div>`}
       ${d.renewal ? `<p class="muted" style="margin:0;font-size:13px">Next renewal: <span class="mono" style="color:var(--text2)">${esc(d.renewal.domain)}</span> · ${esc(dateLabel(d.renewal.renews_on))}</p>` : ''}
     </section>
-    <section class="card span3 rise o1" aria-labelledby="td-h"><div class="card-head">${H('td-h', 'list-todo', 'To do')}<span class="muted">${openTodos} open</span></div>
+    <section class="card span3 rise o1" aria-labelledby="td-h"><div class="card-head">${H('td-h', 'list-todo', 'To do')}<a href="#/todos" style="font-size:13px">${openTodos} open · All to-dos →</a></div>
       ${d.todos.map((t) => todoRow(t, true)).join('') || '<p class="muted" style="margin:8px 0 0;font-size:14px">No to-dos. Add one with a note tagged “To do”.</p>'}
     </section>
     <section class="card span3 rise d-only" aria-labelledby="ql-h"><div class="card-head">${H('ql-h', 'link', 'Quick links')}</div>
@@ -288,9 +293,113 @@ function viewDashboard(d) {
   return { crumb: 'Dashboard', html };
 }
 
-function todoRow(t, withProject) {
-  return `<div class="todo${t.done ? ' done' : ''}"><input type="checkbox" id="td-${t.id}" data-act="todo" data-id="${t.id}" ${t.done ? 'checked' : ''}><label for="td-${t.id}"><span class="t">${esc(t.text)}</span>${withProject ? `<span class="p"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(t.color)}"></span>${esc(t.project_name)}</span>` : ''}</label></div>`;
+const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+function dueChip(due, done) {
+  if (!due) return '';
+  const today = todayISO();
+  const n = Math.round((new Date(due + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000);
+  const label = n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n === -1 ? 'Yesterday' : n > 1 && n < 7 ? new Date(due + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' }) : new Date(due + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `<span class="due${done ? '' : n < 0 ? ' late' : n === 0 ? ' today' : ''}">${L('calendar', 12)}${label}</span>`;
 }
+function todoRow(t, withProject) {
+  return `<div class="todo${t.done ? ' done' : ''}"><input type="checkbox" id="td-${t.id}" data-act="todo" data-id="${t.id}" ${t.done ? 'checked' : ''}><label for="td-${t.id}"><span class="t">${esc(t.text)}</span><span class="p">${withProject ? `<span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(t.color)}"></span>${esc(t.project_name)}` : ''}${dueChip(t.due_on, t.done)}</span></label></div>`;
+}
+
+// ---------- GitHub feed ----------
+function ghCard(g) {
+  const head = (extra = '') => `<div class="card-head">${H('gh-h', 'git-branch', 'GitHub')}${extra}</div>`;
+  if (!g || g.loading) return head() + `<div class="sk" style="height:14px;margin:10px 0 8px"></div><div class="sk" style="height:14px;width:70%;margin-bottom:8px"></div><div class="sk" style="height:14px;width:85%"></div>`;
+  if (g.error) return head(`<a href="${esc(g.url)}" target="_blank" rel="noopener" style="font-size:13px">Open ${L('arrow-up-right', 13)}</a>`) + `<p class="muted" style="margin:6px 0 0;font-size:13px">${esc(g.error)}.${g.code === 'private' || g.code === 'rate' ? ' Add a read-only GitHub key named <span class="mono">GITHUB_TOKEN</span> to the hub in Cloudflare to see it here.' : ''}</p>`;
+  const build = { success: ['up', 'Passing', 'circle-check'], failure: ['down', 'Failing', 'circle-alert'], pending: ['progress', 'Building', 'loader'] }[g.build];
+  return head(`<button class="icon-btn" data-act="gh-refresh" aria-label="Refresh GitHub" title="Refresh">${ICON.refresh}</button>`) + `
+    <a class="gh-repo" href="${esc(g.url)}" target="_blank" rel="noopener"><span class="mono">${esc(g.repo)}</span>${g.private ? '<span class="pill off">Private</span>' : ''}${L('arrow-up-right', 13)}</a>
+    <p class="muted gh-meta">${build ? `<span class="pill ${build[0]}">${build[1]}</span>` : ''}<span>${L('git-branch', 12)}${esc(g.branch)}</span><span>Pushed ${esc(rel(Date.parse(g.pushed_at)))}</span></p>
+    <ol class="gh-commits">${(g.commits || []).map((c) => `<li><a href="${esc(c.url)}" target="_blank" rel="noopener"><span class="msg">${esc(c.message)}</span><span class="muted"><span class="mono">${esc(c.sha)}</span> · ${esc(c.author)} · ${esc(rel(c.at))}</span></a></li>`).join('') || '<li class="muted">No commits yet.</li>'}</ol>
+    ${g.stale ? `<p class="muted" style="margin:6px 0 0;font-size:12px">Showing the last saved copy — ${esc(g.stale)}.</p>` : ''}`;
+}
+async function loadGitHub(id, fresh) {
+  const cur = S.gh[id];
+  if (!fresh && cur && !cur.loading && Date.now() - cur.at < 5 * 60_000) return;
+  if (!$('#gh')) return;
+  if (!cur || fresh) { S.gh[id] = { loading: true }; $('#gh').innerHTML = ghCard(S.gh[id]); }
+  try {
+    const g = await api(`/projects/${encodeURIComponent(id)}/github${fresh ? '?fresh=1' : ''}`);
+    S.gh[id] = { ...g, at: Date.now() };
+  } catch (e) { S.gh[id] = { error: e.message, at: Date.now() }; }
+  const el = $('#gh'); if (el && route().id === id) el.innerHTML = ghCard(S.gh[id]);
+}
+
+// ---------- to-do board ----------
+function viewTodos(d) {
+  const T = S.todo;
+  const today = d.today;
+  const plus = (n) => { const x = new Date(today + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+  const week = plus(7);
+  const list = d.todos.filter((t) => !T.project || t.project_id === T.project);
+  const open = list.filter((t) => !t.done);
+  const groups = [
+    ['late', 'Overdue', 'circle-alert', open.filter((t) => t.due_on && t.due_on < today)],
+    ['today', 'Today', 'sunrise', open.filter((t) => t.due_on === today)],
+    ['week', 'Next 7 days', 'calendar-days', open.filter((t) => t.due_on > today && t.due_on <= week)],
+    ['later', 'Later', 'calendar-range', open.filter((t) => t.due_on > week)],
+    ['none', 'No date', 'inbox', open.filter((t) => !t.due_on)],
+  ];
+  const done = list.filter((t) => t.done);
+  const row = (t) => `<div class="trow${t.done ? ' done' : ''}" data-id="${t.id}">
+    ${t.done ? '' : `<span class="grip" aria-hidden="true" title="Drag to reorder">${L('grip-vertical', 16)}</span>`}
+    <input type="checkbox" data-act="todo" data-id="${t.id}" ${t.done ? 'checked' : ''} aria-label="Done: ${esc(t.text)}">
+    <div class="tmain">${S.editing === t.id ? `<form data-form="edit-note" data-id="${t.id}" class="edit-note"><label class="sr" for="en-${t.id}">Edit to-do</label><textarea class="input" id="en-${t.id}" name="text" rows="2" required maxlength="2000">${esc(t.text)}</textarea><div class="row" style="justify-content:flex-end;gap:8px;margin-top:8px"><button type="button" class="btn small" data-act="cancel-edit">Cancel</button><button class="btn small primary">Save</button></div></form>` : `<p class="fmt" data-act="edit-note" data-id="${t.id}" title="Click to edit">${fmt(t.text)}</p>`}
+      <div class="tmeta"><a class="tproj" href="#/p/${esc(t.project_id)}"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(t.color)}"></span>${esc(t.project_name)}</a>${dueChip(t.due_on, t.done)}</div></div>
+    ${t.done ? '' : `<label class="tdate" title="Set due date">${L('calendar', 15)}<span class="sr">Due date</span><input type="date" data-act="todo-due" data-id="${t.id}" value="${esc(t.due_on || '')}"></label>`}
+    <button class="icon-btn" data-act="del-note" data-id="${t.id}" aria-label="Delete to-do">${ICON.trash}</button></div>`;
+  const html = `<div class="page">
+  <div class="page-head rise"><div><h1 class="d-only">To-dos</h1><p>Everything you need to do, across every project. Drag to reorder.</p></div></div>
+  <form class="card tadd rise" data-form="todo-add">
+    <label class="sr" for="ta-text">New to-do</label><input class="input" id="ta-text" name="text" required maxlength="2000" placeholder="Add a to-do…" autocomplete="off">
+    <div class="tadd-row"><label class="sr" for="ta-p">Project</label><select class="input sm" id="ta-p" name="project_id" required>${d.projects.map((p) => `<option value="${esc(p.id)}"${(T.project || T.lastProject) === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+      <label class="due-in show"><span class="sr">Due date</span>${L('calendar', 14)}<input type="date" name="due_on" class="input sm" aria-label="Due date (optional)"></label>
+      <button class="btn primary">${ICON.plus}Add</button></div>
+  </form>
+  <div class="hscroll site-pick rise" role="group" aria-label="Filter by project" style="margin:16px 0 4px">
+    <button class="filter${!T.project ? ' on' : ''}" aria-pressed="${!T.project}" data-act="todo-proj" data-v="">All projects <span class="count-pill">${d.todos.filter((t) => !t.done).length}</span></button>
+    ${d.projects.filter((p) => d.todos.some((t) => t.project_id === p.id)).map((p) => `<button class="filter${T.project === p.id ? ' on' : ''}" aria-pressed="${T.project === p.id}" data-act="todo-proj" data-v="${esc(p.id)}"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(p.color)}"></span>${esc(p.name)}</button>`).join('')}
+  </div>
+  ${open.length ? '' : `<div class="empty big rise" style="margin-top:16px">${L('list-checks', 36)}<b style="color:var(--text)">All clear</b><span>Nothing to do${T.project ? ' for this project' : ''}. Add one above.</span></div>`}
+  ${groups.filter(([, , , items]) => items.length).map(([k, label, icon, items]) => `<section class="tgroup rise ${k}" aria-label="${label}">
+    <h2 class="ih">${L(icon, 16)}${label}<span class="count-pill">${items.length}</span></h2>
+    <div class="card tlist" data-group="${k}">${items.map(row).join('')}</div></section>`).join('')}
+  ${done.length ? `<section class="tgroup rise" aria-label="Done"><button class="tdone-toggle" data-act="todo-done-toggle">${L(T.showDone ? 'chevron-right' : 'chevron-right', 16, T.showDone ? 'rot' : '')}Done in the last 2 weeks<span class="count-pill">${done.length}</span></button>
+    ${T.showDone ? `<div class="card tlist">${done.map(row).join('')}</div>` : ''}</section>` : ''}
+</div>`;
+  return { crumb: 'To-dos', html };
+}
+
+// Drag to reorder (works with mouse and touch). Moves stay within a group.
+(() => {
+  let row = null, list = null, moved = false;
+  document.addEventListener('pointerdown', (e) => {
+    const g = e.target.closest('.trow .grip'); if (!g) return;
+    row = g.closest('.trow'); list = row.parentElement; moved = false;
+    row.classList.add('dragging'); g.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  document.addEventListener('pointermove', (e) => {
+    if (!row) return;
+    const sibs = [...list.querySelectorAll('.trow:not(.dragging)')];
+    const after = sibs.find((s) => { const r = s.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+    if (after) { if (after !== row.nextElementSibling) { list.insertBefore(row, after); moved = true; } }
+    else if (list.lastElementChild !== row) { list.appendChild(row); moved = true; }
+  });
+  const end = async () => {
+    if (!row) return;
+    row.classList.remove('dragging'); row = null;
+    if (!moved) return;
+    const ids = [...document.querySelectorAll('.tlist .trow')].map((r) => Number(r.dataset.id));
+    const order = new Map(ids.map((id, i) => [id, i]));
+    S.data.todos.sort((a, b) => (order.get(a.id) ?? 1e9) - (order.get(b.id) ?? 1e9));
+    try { await api('/todos/order', { method: 'POST', body: { ids } }); } catch (err) { fail(err); }
+  };
+  document.addEventListener('pointerup', end); document.addEventListener('pointercancel', end);
+})();
 
 // ---------- projects list ----------
 function viewProjects(d) {
@@ -332,6 +441,7 @@ function viewProject(d) {
         <textarea class="input" id="note-text" name="text" rows="3" placeholder="Write a note — a to-do, an idea, where you left off…" required maxlength="2000"></textarea>
         <div class="row composer-foot" style="flex-wrap:wrap;justify-content:space-between;margin-top:10px;gap:10px">
           <div class="row kinds" role="group" aria-label="Note type" style="gap:6px;flex-wrap:wrap">${kinds.map((k) => `<button type="button" class="kind" aria-pressed="${S.kind === k}" data-act="kind" data-v="${k}">${L(KIND_ICON[k], 14)}${KIND_LABEL[k]}</button>`).join('')}</div>
+          <label class="due-in"><span class="sr">Due date</span>${L('calendar', 14)}<input type="date" name="due_on" class="input sm" aria-label="Due date (optional)"></label>
           <button class="btn primary">Add note <span class="kbd">${MOD} ↵</span></button>
         </div>
       </form>
@@ -345,7 +455,8 @@ function viewProject(d) {
         <div style="padding:14px 18px"><button class="btn small" data-act="add-link">+ Add a link</button></div></div>`}
     </section>
     <aside class="narrow">
-      <div class="card"><h2 class="ih" style="margin-bottom:4px">${L('list-todo', 16)}Open to-dos</h2><p class="muted" style="margin:0 0 6px;font-size:13px">From this project's “To do” notes</p>${open.map((t) => `<p style="margin:0;padding:10px 0;border-top:1px solid var(--border);font-size:14px;color:var(--text2)">${esc(t.text)}</p>`).join('') || '<p class="muted" style="margin:0;padding:10px 0;border-top:1px solid var(--border);font-size:14px">All clear.</p>'}</div>
+      <div class="card"><h2 class="ih" style="margin-bottom:4px">${L('list-todo', 16)}Open to-dos</h2><p class="muted" style="margin:0 0 6px;font-size:13px">From this project's “To do” notes</p>${open.map((t) => `<p style="margin:0;padding:10px 0;border-top:1px solid var(--border);font-size:14px;color:var(--text2);display:flex;justify-content:space-between;gap:8px"><span>${esc(t.text)}</span>${dueChip(t.due_on)}</p>`).join('') || '<p class="muted" style="margin:0;padding:10px 0;border-top:1px solid var(--border);font-size:14px">All clear.</p>'}</div>
+      ${d.links.some((l) => /github\.com\/[\w.-]+\/[\w.-]+/i.test(l.url)) ? `<div class="card gh-card" id="gh">${ghCard(S.gh[p.id])}</div>` : ''}
       <div class="card"><h2 class="ih" style="margin-bottom:8px">${L('history', 16)}Activity</h2>${d.events.map((e) => `<p style="margin:0;padding:8px 0;border-top:1px solid var(--border);font-size:13px;color:var(--text2);display:flex;justify-content:space-between;gap:10px"><span style="min-width:0;overflow-wrap:anywhere">${esc(e.text)}</span><span class="muted" style="flex:none">${esc(rel(e.created_at))}</span></p>`).join('') || '<p class="muted" style="margin:0;font-size:13px">Nothing yet.</p>'}</div>
       ${d.incidents.length ? `<div class="card"><h2 class="ih" style="margin-bottom:8px">${L('circle-alert', 16)}Incidents</h2>${d.incidents.map((i) => `<p style="margin:0;padding:8px 0;border-top:1px solid var(--border);font-size:13px"><span class="pill ${i.resolved_at ? 'up' : 'down'}" style="margin-right:6px">${i.resolved_at ? 'Resolved' : 'Open'}</span>${esc(i.title)} · <span class="muted">${esc(rel(i.started_at))}</span></p>`).join('')}</div>` : ''}
     </aside>
@@ -397,8 +508,21 @@ function viewMonitoring(d) {
       ${d.checks.map((c) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc((proj[c.project_id] || {}).color || '#52525B')}"></span><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span style="font-size:14px">${esc((proj[c.project_id] || {}).name || c.project_id)} · ${esc(c.name)}</span><span class="mono muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.url)}</span></span><input type="checkbox" class="switch" role="switch" aria-label="Check ${esc(c.name)} on" data-act="check-on" data-id="${c.id}" ${c.enabled ? 'checked' : ''}></div>`).join('')}
     </section>
   </div>
+  <div style="margin-top:16px">${backupsCard(d.backups)}</div>
 </div>`;
   return { crumb: 'Monitoring', html };
+}
+
+// ---------- backups ----------
+const kb = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB');
+function backupsCard(b) {
+  if (!b) return '';
+  return `<section class="card wide" aria-labelledby="bk-h" style="margin-top:0">
+    <div class="card-head">${H('bk-h', 'database', 'Backups')}<button class="btn small" data-act="backup-now">${ICON.refresh}Back up now</button></div>
+    <p class="muted" style="margin:0 0 6px;font-size:13px">${b.connected ? `Every database is copied each night at 2:30 AM and kept for ${b.keep_days} days. You get an alert if one fails.` : 'Backup storage isn’t connected yet.'}</p>
+    ${b.databases.map((x) => { const last = x.files[0]; return `<div class="row bk-row"><span class="tile sm ic">${L('database', 13)}</span><span style="flex:1;min-width:0;display:flex;flex-direction:column"><b style="font-size:14px;font-weight:500">${esc(x.name)}</b><span class="muted" style="font-size:12px">${last ? `Last ${esc(dateLabel(last.date))} · ${kb(last.size)} · ${last.rows} row${last.rows === 1 ? "" : "s"} · ${x.files.length} kept` : 'No backups yet — runs tonight, or press Back up now'}</span></span>
+      ${x.files.length ? `<label class="sr" for="bk-${esc(x.id)}">Pick a backup</label><select class="input sm bk-pick" id="bk-${esc(x.id)}">${x.files.map((f) => `<option value="${esc(f.key)}">${esc(dateLabel(f.date))}</option>`).join('')}</select><a class="btn small" data-act="backup-dl" data-for="bk-${esc(x.id)}" href="/api/backups/file?key=${encodeURIComponent(last.key)}" download>${L('hard-drive-download', 14)}Download</a>` : ''}</div>`; }).join('')}
+  </section>`;
 }
 
 // ---------- finances ----------
@@ -628,7 +752,7 @@ function paletteItems() {
     { label: 'Add an expense', icon: 'receipt', hint: '', run: () => { closePalette(); S.showForm = 'entry'; location.hash = '#/finances'; render(); } },
     { label: 'Keyboard shortcuts', icon: 'keyboard', hint: '?', run: () => { closePalette(); showShortcuts(); } },
   ].filter((a) => m(a.label));
-  const pages = [['Dashboard', '#/', 'layout-dashboard'], ['Projects', '#/projects', 'folder'], ['Monitoring', '#/monitoring', 'activity'], ['Finances', '#/finances', 'wallet'], ['Domains', '#/finances/domains', 'globe']]
+  const pages = [['Dashboard', '#/', 'layout-dashboard'], ['Projects', '#/projects', 'folder'], ['To-dos', '#/todos', 'list-checks'], ['Monitoring', '#/monitoring', 'activity'], ['Finances', '#/finances', 'wallet'], ['Domains', '#/finances/domains', 'globe']]
     .filter(([l]) => m(l)).map(([label, href, icon]) => ({ label, href, icon }));
   const projects = S.projects.filter((p) => m(p.name)).map((p) => ({ label: p.name, href: '#/p/' + p.id, p }));
   const found = S.palette.found && S.palette.found.q === q ? S.palette.found : { notes: [], links: [] };
@@ -693,7 +817,7 @@ function openPalette(mode = 'search') { S.palette = { mode, q: '', sel: 0 }; dra
 function closePalette() { S.palette = null; drawPalette(); }
 
 // ---------- shortcuts sheet ----------
-const SHORTCUTS = [[`${MOD} K`, 'Search or run a command'], ['N', 'New note'], ['G then D', 'Go to Dashboard'], ['G then P', 'Go to Projects'], ['G then M', 'Go to Monitoring'], ['G then F', 'Go to Finances'], ['R', 'Refresh now'], ['T', 'Light / dark mode'], [`${MOD} ↵`, 'Save a note'], ['Esc', 'Close or cancel'], ['?', 'This list']];
+const SHORTCUTS = [[`${MOD} K`, 'Search or run a command'], ['N', 'New note'], ['G then D', 'Go to Dashboard'], ['G then P', 'Go to Projects'], ['G then T', 'Go to To-dos'], ['G then M', 'Go to Monitoring'], ['G then F', 'Go to Finances'], ['R', 'Refresh now'], ['T', 'Light / dark mode'], [`${MOD} ↵`, 'Save a note'], ['Esc', 'Close or cancel'], ['?', 'This list']];
 function showShortcuts() {
   S.palette = { mode: 'help' };
   $('#overlay').innerHTML = `<div class="scrim" data-act="scrim"><div class="dialog" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" style="max-width:440px"><div class="pad">
@@ -785,6 +909,17 @@ document.addEventListener('click', async (e) => {
       case 'add-domain': S.showForm = 'domain'; render({ quiet: true }); setTimeout(() => { const i = $('form[data-form="domain"] input'); if (i) i.focus(); }, 0); break;
       case 'edit-domain': { const r = S.data.domains.find((x) => x.id === Number(id)); if (r) { S.palette = { mode: 'domain' }; $('#overlay').innerHTML = `<div class="scrim" data-act="scrim"><div class="dialog" role="dialog" aria-modal="true" aria-label="Edit domain">${domainForm(r, S.data).replace('class="card rise"', 'class="pad"').replace('margin-top:16px;', '')}</div></div>`; } break; }
       case 'del-domain': await api('/renewals/' + id, { method: 'DELETE' }); closePalette(); S.showForm = null; toast('Domain removed'); render({ quiet: true }); break;
+      case 'gh-refresh': loadGitHub(route().id, true); break;
+      case 'todo-proj': S.todo.project = v; render({ quiet: true }); break;
+      case 'todo-done-toggle': S.todo.showDone = !S.todo.showDone; render({ quiet: true }); break;
+      case 'backup-now': {
+        t.disabled = true; t.innerHTML = `<span class="spin" style="display:inline-flex">${ICON.refresh}</span>Backing up…`;
+        const { results } = await api('/backups/run', { method: 'POST' });
+        const bad = results.filter((r) => !r.ok);
+        toast(bad.length ? `Backup failed: ${bad.map((b) => b.db).join(', ')}` : `Backed up ${results.length} databases`, bad.length ? { error: true } : {});
+        render({ quiet: true });
+        break;
+      }
       case 'fin-site': S.fin.site = v || ''; S.fin.limit = 50; render({ quiet: true }); break;
       case 'fin-kind': S.fin.kind = v; S.fin.limit = 50; render({ quiet: true }); break;
       case 'fin-more': S.fin.limit += 100; render({ quiet: true }); break;
@@ -811,6 +946,7 @@ document.addEventListener('click', async (e) => {
 });
 
 document.addEventListener('change', async (e) => {
+  if (e.target.classList.contains('bk-pick')) { const l = document.querySelector(`[data-for="${e.target.id}"]`); if (l) l.href = '/api/backups/file?key=' + encodeURIComponent(e.target.value); return; }
   const t = e.target.closest('[data-act]');
   if (!t) return;
   try {
@@ -820,6 +956,7 @@ document.addEventListener('change', async (e) => {
       if (done) toast('To-do done', { undo: async () => { await api('/notes/' + t.dataset.id, { method: 'PATCH', body: { done: false } }); render({ quiet: true }); } });
       render({ quiet: true });
     }
+    if (t.dataset.act === 'todo-due') { await api('/notes/' + t.dataset.id, { method: 'PATCH', body: { due_on: t.value || null } }); render({ quiet: true }); }
     if (t.dataset.act === 'rec-on') { await api('/recurring/' + t.dataset.id, { method: 'PATCH', body: { active: t.checked } }); render({ quiet: true }); }
     if (t.dataset.act === 'check-on') {
       await api('/checks/' + t.dataset.id, { method: 'PATCH', body: { enabled: t.checked } });
@@ -838,7 +975,7 @@ document.addEventListener('submit', async (e) => {
   try {
     switch (f.dataset.form) {
       case 'note': {
-        const note = await api('/notes', { method: 'POST', body: { project_id: route().id, kind: S.kind, text: data.text } });
+        const note = await api('/notes', { method: 'POST', body: { project_id: route().id, kind: S.kind, text: data.text, due_on: S.kind === 'todo' ? data.due_on : '' } });
         toast('Note added', { undo: async () => { await api('/notes/' + note.id, { method: 'DELETE' }); render({ quiet: true }); } });
         render({ quiet: true });
         break;
@@ -850,6 +987,14 @@ document.addEventListener('submit', async (e) => {
         closePalette();
         toast(`Note added to ${project ? project.name : 'project'}`, { undo: async () => { await api('/notes/' + note.id, { method: 'DELETE' }); render({ quiet: true }); } });
         render({ quiet: true });
+        break;
+      }
+      case 'todo-add': {
+        const note = await api('/notes', { method: 'POST', body: { project_id: data.project_id, kind: 'todo', text: data.text, due_on: data.due_on } });
+        S.todo.lastProject = data.project_id;
+        toast('To-do added', { undo: async () => { await api('/notes/' + note.id, { method: 'DELETE' }); render({ quiet: true }); } });
+        await render({ quiet: true });
+        const i = $('#ta-text'); if (i) i.focus();
         break;
       }
       case 'edit-note': await api('/notes/' + f.dataset.id, { method: 'PATCH', body: { text: data.text } }); S.editing = null; toast('Note saved'); render({ quiet: true }); break;
@@ -911,7 +1056,7 @@ document.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (S.gPending) {
     S.gPending = false;
-    const to = { d: '#/', p: '#/projects', m: '#/monitoring', f: '#/finances' }[k];
+    const to = { d: '#/', p: '#/projects', t: '#/todos', m: '#/monitoring', f: '#/finances' }[k];
     if (to) { e.preventDefault(); location.hash = to; }
     return;
   }
@@ -925,7 +1070,7 @@ document.addEventListener('keydown', (e) => {
 window.addEventListener('hashchange', () => { S.showForm = null; S.editing = null; S.tab = 'notes'; S.fin.kind = 'all'; S.fin.q = ''; S.fin.limit = 50; closePalette(); render(); });
 
 // Live: refresh quietly every 30 seconds while the page is open, and as soon as you come back to it.
-const busy = () => S.palette || S.showForm || S.editing || document.hidden || document.activeElement.matches('input,textarea,select');
+const busy = () => S.palette || S.showForm || S.editing || document.querySelector('.trow.dragging') || document.hidden || document.activeElement.matches('input,textarea,select');
 setInterval(() => { if (!busy()) render({ quiet: true }); }, 30_000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && S.loadedAt && Date.now() - S.loadedAt > 10_000 && !busy()) render({ quiet: true }); });
 setInterval(() => {

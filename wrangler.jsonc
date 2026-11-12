@@ -17,13 +17,17 @@
     // Every request runs through the Worker first, so the login check covers the app's files too.
     "run_worker_first": true
   },
+  "r2_buckets": [{ "binding": "BACKUPS", "bucket_name": "mazzagotte-backups" }],
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "mazzagotte-hub",
       "database_id": "7c2c7c6c-2a4c-4954-999e-22e52dda5964",
       "migrations_dir": "migrations"
-    }
+    },
+    // Read-only use: the hub backs these up nightly. Each site still owns its own database.
+    { "binding": "SPARETIME_DB", "database_name": "sparetime", "database_id": "6eb77ed3-bf35-4fcd-83c7-379940f88eac" },
+    { "binding": "USBC_DB", "database_name": "ada-county-usbc-portal", "database_id": "6f7d4e42-9220-43a1-9f28-c1fb594a9396" }
   ],
   // Uptime checks every minute (the shortest schedule Cloudflare allows).
   "triggers": { "crons": ["* * * * *"] },
