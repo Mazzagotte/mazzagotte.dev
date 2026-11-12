@@ -1,5 +1,8 @@
 # Copy to .dev.vars for local development (never commit .dev.vars)
 DEV_NO_AUTH=1
+# Blank the login settings locally so DEV_NO_AUTH applies (it never does when ACCESS_AUD is set).
+ACCESS_AUD=
+ACCESS_TEAM_DOMAIN=
 RAILWAY_HOOK_SECRET=dev-railway
 DEPLOY_HOOK_SECRET=dev-deploy
 MONEY_HOOK_SECRET=dev-money

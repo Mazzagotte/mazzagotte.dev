@@ -30,9 +30,9 @@ function tokenFrom(request) {
 
 // Returns { email } for a valid owner, or null. Throws only when Access isn't configured.
 export async function verifyAccess(request, env) {
-  // Local development only: ignored on any address other than localhost, so it can never open the live site.
-  const hostname = new URL(request.url).hostname;
-  if (env.DEV_NO_AUTH === '1' && (hostname === 'localhost' || hostname === '127.0.0.1')) return { email: 'dev@localhost' };
+  // Local development only. It needs ACCESS_AUD to be empty, and the live site always has ACCESS_AUD set
+  // (wrangler.jsonc), so this can never open the live site. .dev.vars blanks it for local runs.
+  if (env.DEV_NO_AUTH === '1' && !env.ACCESS_AUD) return { email: 'dev@localhost' };
   const team = (env.ACCESS_TEAM_DOMAIN || '').replace(/\/+$/, '');
   if (!team || !env.ACCESS_AUD) throw new Error('not-configured');
 
