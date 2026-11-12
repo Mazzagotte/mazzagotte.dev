@@ -784,3 +784,28 @@ button.site-row.on { background: color-mix(in srgb, var(--accent) 8%, transparen
 }
 .search-in input.input.sm { width: 100%; }
 @media (max-width: 860px) { .nfilter > .hscroll { width: calc(100% + 32px); max-width: calc(100% + 32px); min-width: 0; } }
+
+/* ---------- no more stretched cards ---------- */
+/* Dashboard: two independent columns, so each card is only as tall as its content. */
+.dash { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.dcol { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.upnext { display: flex; flex-direction: column; }
+.upnext .label { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 2px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.upnext .more { margin-top: 8px; font-size: 13px; font-weight: 500; }
+.money3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.money3 .stat b { font-size: 22px; } .money3 .stat b.neg { color: var(--bad); }
+.be-mini { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 12px; background: color-mix(in srgb, var(--well) 60%, var(--surface)); color: var(--text2); font-size: 13px; }
+.be-mini:hover { color: var(--text); background: var(--subtle); }
+.be-mini .lu { vertical-align: -2px; margin-right: 4px; color: var(--muted); }
+.be-mini .meter { height: 6px; }
+.due-row { gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); }
+/* Project grids: masonry columns instead of rows, so short cards don't stretch. */
+.grid.masonry { display: block; columns: 3 300px; column-gap: 16px; }
+.grid.masonry > * { break-inside: avoid; margin-bottom: 16px; display: flex; }
+@media (max-width: 1100px) { .dash { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
+@media (max-width: 860px) {
+  .dash { display: flex; flex-direction: column; gap: 12px; }
+  .dcol { display: contents; }
+  .dash > .dcol > .o1 { order: 1; } .dash > .dcol > .o2 { order: 2; } .dash > .dcol > .o3 { order: 3; } .dash > .dcol > .o4 { order: 4; }
+  .money3 .stat b { font-size: 17px; }
+}

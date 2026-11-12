@@ -250,45 +250,52 @@ function viewDashboard(d) {
   <div class="page-head rise"><div><p class="muted" style="margin:0 0 4px;font-size:14px">${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p><h1>${greet}, <span class="grad">James</span></h1></div>
     <p class="muted" style="margin:0;font-size:14px">${d.projects.length} projects · ${live} live · ${openTodos} open to-dos</p></div>
   <div class="hscroll m-flex" style="margin:0 -16px 12px;padding:0 16px" aria-label="Site status">${enabled.map((c) => { const p = projectName[c.project_id] || {}; return `<a class="status-chip" href="#/monitoring"><span class="sdot ${!c.last_at ? 'unk' : c.last_ok ? 'glow' : 'bad'}"></span>${esc(p.name || c.project_id)}</a>`; }).join('')}</div>
-  <div class="bento">
-    ${f ? `<article class="card stripe span4 rows2 rise o2 feat" style="--c:${esc(f.color)};padding:28px;display:flex;flex-direction:column;gap:18px">
+  <div class="dash">
+   <div class="dcol dmain">
+    ${f ? `<article class="card stripe rise o2 feat" style="--c:${esc(f.color)};padding:28px;display:flex;flex-direction:column;gap:18px">
       <div class="row" style="align-items:flex-start;gap:14px">${tile(f, 'lg')}<div style="flex:1;min-width:0"><p class="muted" style="margin:0;font-size:12px;font-weight:500;letter-spacing:.04em;text-transform:uppercase">Most recent${featuredNote ? ' · ' + esc(rel(featuredNote.updated_at)) : ''}</p><h2 style="margin:2px 0 0;font-size:26px;font-weight:600;letter-spacing:-.02em">${esc(f.name)}</h2></div>${pill(f.status)}</div>
       <p class="d-only" style="margin:0;font-size:16px;color:var(--body)">${esc(f.description)}</p>
       ${featuredNote ? `<div class="well"><p class="label">Latest note</p><p class="fmt" style="font-size:15px;color:var(--text2)">${fmt(featuredNote.text)}</p></div>` : `<div class="empty"><span>${ICON.emptyNote}</span><span style="display:flex;flex-direction:column;gap:2px"><b style="font-weight:500;color:var(--text2)">No notes yet</b><a href="#/p/${esc(f.id)}">Write the first one →</a></span></div>`}
+      ${(() => { const next = d.todos.filter((t) => t.project_id === f.id && !t.done).sort((a, b) => (a.due_on || '9999').localeCompare(b.due_on || '9999')).slice(0, 3); return next.length ? `<div class="upnext"><p class="label">${L('list-todo', 13)}Up next</p>${next.map((t) => `<div class="stodo"><input type="checkbox" id="un-${t.id}" data-act="todo" data-id="${t.id}"><label for="un-${t.id}">${esc(t.text)}</label>${dueChip(t.due_on)}</div>`).join('')}${f.open_todos > next.length ? `<a href="#/p/${esc(f.id)}" class="more">+${f.open_todos - next.length} more</a>` : ''}</div>` : ''; })()}
       <div class="d-only" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
         <div class="stat"><b>${f.open_todos}</b><span>${L('list-todo', 14)}Open to-dos</span></div>
         <div class="stat"><b>${(f.links || []).length}</b><span>${L('link', 14)}Links</span></div>
         <div class="stat"><b>${esc(f.hosting || '—')}</b><span>${L('server', 14)}Hosting</span></div>
       </div>
-      <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:auto">${(f.links || []).slice(0, 3).map((l) => `<a class="chip" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)} ${ICON.out}</a>`).join('')}<a class="btn dark" style="margin-left:auto" href="#/p/${esc(f.id)}">Open project ${L('arrow-right', 15)}</a></div>
+      <div class="row" style="flex-wrap:wrap;gap:8px">${(f.links || []).slice(0, 3).map((l) => `<a class="chip" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)} ${ICON.out}</a>`).join('')}<a class="btn dark" style="margin-left:auto" href="#/p/${esc(f.id)}">Open project ${L('arrow-right', 15)}</a></div>
     </article>` : ''}
-    <section class="card span2 rows2 rise o3" aria-labelledby="act-h"><div class="card-head">${H('act-h', 'history', 'Latest activity')}<span class="muted">Newest first</span></div>
-      <ol class="feed">${d.events.map((e, i) => `<li><span class="ring${i === 0 ? ' fill' : ''}" style="--c:${esc(e.color || (e.level === 'bad' ? 'var(--bad)' : 'var(--hover)'))}"></span><span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span class="who"><b>${esc(e.project_name || 'Hub')}</b><span class="muted" style="flex:none;font-size:12px">${esc(rel(e.created_at))}</span></span><span class="what">${esc(e.text)}</span></span></li>`).join('') || '<li class="muted">Nothing yet.</li>'}</ol>
-    </section>
-    <section class="card span3 rise d-only" aria-labelledby="st-h">
+
+    <section class="card rise d-only" aria-labelledby="st-h">
       <div class="card-head">${H('st-h', 'activity', 'Site status')}<span class="row" style="gap:12px;font-size:12px">${known.length ? (down.length ? `<span class="row" style="gap:6px;color:var(--bad);font-weight:500"><span class="sdot bad"></span>${down.length} down</span>` : '<span class="row" style="gap:6px;font-weight:500"><span class="sdot glow"></span>All up</span>') : '<span class="muted">Waiting for first check</span>'}<a href="#/monitoring" style="font-size:13px">Monitoring →</a></span></div>
       <div class="rows">${enabled.map((c) => { const p = projectName[c.project_id] || {}; return `<a href="#/monitoring" class="row" style="padding:9px 0;color:var(--text)"><span class="sdot ${!c.last_at ? 'unk' : c.last_ok ? '' : 'bad'}"></span><span style="flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.3"><span style="font-size:14px;font-weight:500">${esc(p.name || c.project_id)}</span><span class="mono muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(host(c.url))}</span></span><span class="spk ${c.last_at && !c.last_ok ? 'down' : ''}">${spark(c.spark || [], { w: 72, h: 22 })}</span><span class="muted num" style="font-size:12px;min-width:64px;text-align:right">${c.last_at ? (c.last_ok ? `${c.last_ms} ms` : esc(c.last_error || 'Down')) : '—'}</span></a>`; }).join('')}</div>
     </section>
-    <section class="card span3 rise o4" aria-labelledby="mo-h" style="display:flex;flex-direction:column;gap:14px">
+    <section class="card rise o4" aria-labelledby="mo-h" style="display:flex;flex-direction:column;gap:14px">
       <div class="card-head" style="margin:0">${H('mo-h', 'wallet', 'Money · this month')}<a href="#/finances" style="font-size:13px">Finances →</a></div>
-      ${m.income || m.costs ? `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
-        <div class="stat"><span>${L('trending-up', 14)}Income</span><b style="font-size:22px">${money(m.income)}</b></div>
-        <div class="stat"><span>${L('trending-down', 14)}Costs</span><b style="font-size:22px">${money(m.costs)}</b></div>
-        <div class="stat"><span>${L('scale', 14)}Net</span><b style="font-size:22px">${money(m.net)}</b></div></div>`
-        : `<div class="empty">Nothing recorded this month. Tournament Central's $5 charges land here automatically once payments are on; add costs on the Finances page.</div>`}
-      ${d.renewal ? `<p class="muted" style="margin:0;font-size:13px">Next renewal: <span class="mono" style="color:var(--text2)">${esc(d.renewal.domain)}</span> · ${esc(dateLabel(d.renewal.renews_on))}</p>` : ''}
+      <div class="money3">
+        <div class="stat"><span>${L('trending-up', 14)}Income</span><b>${money(m.income)}</b></div>
+        <div class="stat"><span>${L('trending-down', 14)}Costs</span><b>${money(m.costs)}</b></div>
+        <div class="stat"><span>${L('scale', 14)}Net</span><b class="${m.net < 0 ? 'neg' : ''}">${money(m.net)}</b></div></div>
+      ${d.ops && d.ops.break_even ? (() => { const o = d.ops; const pct = Math.min(100, Math.round((o.tournaments / o.break_even) * 100)); const left = Math.max(0, o.break_even - o.tournaments); return `<a class="be-mini" href="#/finances"><span class="row" style="justify-content:space-between;gap:8px"><span>${L('target', 13)}Break-even: <b>${o.tournaments} of ${o.break_even}</b> tournaments</span><span class="muted">${left ? `${left} to go` : 'Covered'}</span></span><span class="meter"><span style="width:${pct}%"></span></span></a>`; })() : ''}
+      ${d.ops && d.ops.upcoming.length ? `<div><p class="label" style="margin:0 0 2px;font-size:12px;font-weight:500;color:var(--muted)">Due in the next 30 days</p>${d.ops.upcoming.map((u) => `<div class="row due-row"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(u.color || '#71717A')}"></span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px">${esc(u.name)}</span><span class="muted" style="font-size:12px">${esc(new Date(u.on + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</span><b class="num" style="font-size:13px;min-width:56px;text-align:right">${money(u.cents)}</b></div>`).join('')}</div>`
+        : (!m.income && !m.costs && !(d.ops && d.ops.fixed) ? `<div class="empty">Nothing recorded yet. Add your bills on the Finances page; Tournament Central's $5 charges land here automatically.</div>` : '')}
     </section>
-    <section class="card span3 rise o1" aria-labelledby="td-h"><div class="card-head">${H('td-h', 'list-todo', 'To do')}<a href="#/todos" style="font-size:13px">${openTodos} open · All to-dos →</a></div>
-      ${d.todos.map((t) => todoRow(t, true)).join('') || '<p class="muted" style="margin:8px 0 0;font-size:14px">No to-dos. Add one with a note tagged “To do”.</p>'}
+   </div>
+   <div class="dcol dside">
+    <section class="card rise o3" aria-labelledby="act-h"><div class="card-head">${H('act-h', 'history', 'Latest activity')}<span class="muted">Newest first</span></div>
+      <ol class="feed">${d.events.slice(0, 7).map((e, i) => `<li><span class="ring${i === 0 ? ' fill' : ''}" style="--c:${esc(e.color || (e.level === 'bad' ? 'var(--bad)' : 'var(--hover)'))}"></span><span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span class="who"><b>${esc(e.project_name || 'Hub')}</b><span class="muted" style="flex:none;font-size:12px">${esc(rel(e.created_at))}</span></span><span class="what">${esc(e.text)}</span></span></li>`).join('') || '<li class="muted">Nothing yet.</li>'}</ol>
     </section>
-    <section class="card span3 rise d-only" aria-labelledby="ql-h"><div class="card-head">${H('ql-h', 'link', 'Quick links')}</div>
+    <section class="card rise o1" aria-labelledby="td-h"><div class="card-head">${H('td-h', 'list-todo', 'To do')}<a href="#/todos" style="font-size:13px">${openTodos} open · All to-dos →</a></div>
+      ${d.todos.filter((t) => !t.done).slice(0, 6).map((t) => todoRow(t, true)).join('') || '<p class="muted" style="margin:8px 0 0;font-size:14px">No to-dos. Add one with a note tagged “To do”.</p>'}
+    </section>
+    <section class="card rise d-only" aria-labelledby="ql-h"><div class="card-head">${H('ql-h', 'link', 'Quick links')}</div>
       ${allLinks.map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener" class="row" style="min-height:40px;border-top:1px solid var(--border);color:var(--text2);font-size:14px;gap:10px"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(l.color)}"></span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(host(l.url))}</span><span class="muted">${L('arrow-up-right', 14)}</span></a>`).join('')}
     </section>
+   </div>
   </div>
   <section style="margin-top:44px" aria-labelledby="ap-h">
     <div class="row" style="flex-wrap:wrap;justify-content:space-between;margin-bottom:16px"><h2 id="ap-h" style="margin:0;font-size:20px;font-weight:600;letter-spacing:-.02em">All projects</h2>
       <div class="row hscroll" role="group" aria-label="Filter by status" style="gap:6px">${filters.map(([k, l]) => `<button class="filter${S.filter === k ? ' on' : ''}" aria-pressed="${S.filter === k}" data-act="filter" data-v="${k}">${l}</button>`).join('')}</div></div>
-    <div class="grid d-only">${shown.map(projectCard).join('')}</div>
+    <div class="grid masonry d-only">${shown.map(projectCard).join('')}</div>
     <div class="m-only"><div style="display:flex;flex-direction:column;gap:10px">${shown.map(projectRow).join('')}</div></div>
   </section>
 </div>`;
@@ -428,7 +435,7 @@ function viewProjects(d) {
   return {
     crumb: 'Projects',
     html: `<div class="page"><div class="page-head"><div><h1 class="d-only">Projects</h1><p>Everything you're building, with its notes and links.</p></div><button class="btn" data-act="new-project">${ICON.plus}Add project</button></div>
-      <div class="grid d-only">${d.projects.map(projectCard).join('')}</div>
+      <div class="grid masonry d-only">${d.projects.map(projectCard).join('')}</div>
       <div class="m-only"><div style="display:flex;flex-direction:column;gap:10px">${d.projects.map(projectRow).join('')}</div></div></div>`,
   };
 }

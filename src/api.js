@@ -120,6 +120,19 @@ async function dashboard(env) {
   const [from, to] = monthRange(today);
   const money = await moneySummary(env, from, to);
   const renewal = await env.DB.prepare('SELECT * FROM renewals WHERE renews_on >= ? ORDER BY renews_on LIMIT 1').bind(today).first();
+  // Operating costs, break-even and what's due soon, for the Money card.
+  const [{ results: bills }, { results: doms }, tm] = await Promise.all([
+    env.DB.prepare('SELECT r.*, p.name AS project_name, p.color FROM recurring r LEFT JOIN projects p ON p.id = r.project_id WHERE r.active = 1').all(),
+    env.DB.prepare('SELECT r.*, p.name AS project_name, p.color FROM renewals r LEFT JOIN projects p ON p.id = r.project_id').all(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM ledger WHERE kind = 'income' AND project_id = 'tc' AND occurred_on BETWEEN ? AND ?").bind(from, to).first(),
+  ]);
+  const fixed = bills.reduce((a, r) => a + monthlyOf(r), 0) + doms.reduce((a, r) => a + Math.round(r.price_cents / 12), 0);
+  const soon = addDays(today, 30);
+  const upcoming = [
+    ...bills.filter((r) => r.next_on <= soon).map((r) => ({ name: r.name, on: r.next_on, cents: r.amount_cents, color: r.color, type: 'bill' })),
+    ...doms.filter((r) => r.renews_on >= today && r.renews_on <= soon).map((r) => ({ name: r.domain, on: r.renews_on, cents: r.price_cents, color: r.color, type: 'domain' })),
+  ].sort((a, b) => a.on.localeCompare(b.on)).slice(0, 3);
+  const ops = { fixed, break_even: fixed ? Math.ceil(fixed / NET_PER_TOURNAMENT) : 0, tournaments: tm.n, net_per: NET_PER_TOURNAMENT, upcoming };
 
   // "Most recent" = the project with the newest note or event.
   const { results: recent } = await env.DB.prepare(
@@ -147,6 +160,7 @@ async function dashboard(env) {
     open_incidents: openIncidents,
     money: { ...money, month: from },
     renewal,
+    ops,
   };
 }
 
