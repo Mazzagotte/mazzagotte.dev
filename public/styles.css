@@ -482,3 +482,17 @@ html.dark .grad { background-image: linear-gradient(90deg, #60A5FA, #A78BFA); }
 /* Long words, codes and web addresses wrap instead of spilling out of their box */
 .card, .kpi, .note-card, .todo, .feed, .dialog, .toast, .well, .empty { overflow-wrap: anywhere; }
 .row > *, .feed li > *, .note-card > * { min-width: 0; }
+
+/* Lucide icons */
+.lu { flex: none; display: inline-block; vertical-align: middle; }
+.ih { display: flex; align-items: center; gap: 8px; }
+.ih .lu { color: var(--muted); }
+.tag { display: inline-flex; align-items: center; gap: 4px; }
+.stat span, .kpi .l { display: inline-flex; align-items: center; gap: 6px; }
+.stat span .lu, .kpi .l .lu { color: var(--muted); opacity: .9; }
+.kind { display: inline-flex; align-items: center; gap: 6px; }
+.kind .lu { opacity: .75; } .kind[aria-pressed="true"] .lu { opacity: 1; }
+.tile.ic { background: var(--subtle); color: var(--body); }
+.cmd.sel .tile.ic { color: var(--text); }
+.toast > .lu { flex: none; }
+.btn .lu, .chip .lu, .qlink .lu { opacity: .85; }

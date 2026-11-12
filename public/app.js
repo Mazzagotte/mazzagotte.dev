@@ -1,4 +1,5 @@
 // mazzagotte.dev hub — the app (no build step). Hash routes: #/ · #/projects · #/p/<id> · #/monitoring · #/finances
+import { LUCIDE } from './lucide.js';
 const $ = (sel, el = document) => el.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const app = $('#app');
@@ -50,28 +51,18 @@ const KIND_LABEL = { note: 'Note', todo: 'To do', idea: 'Idea', rule: 'Rule', in
 const STATUS_LABEL = { live: 'Live', progress: 'In progress', planned: 'Planned' };
 const COLORS = ['#2563EB', '#C2410C', '#0F766E', '#4F46E5', '#15803D', '#D97706', '#E11D48', '#7C3AED', '#0891B2', '#52525B'];
 
-const I = (d, size = 18) => `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+// Lucide icon by name. Size in px; stroke follows the text color.
+const L = (name, size = 18, cls = '') => `<svg class="lu ${cls}" aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${LUCIDE[name] || ''}</svg>`;
 const ICON = {
-  dash: I('<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>'),
-  folder: I('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
-  money: I('<rect x="2" y="6" width="20" height="14" rx="2.5"/><path d="M2 10h20M16 15h2"/><path d="M6 6V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/>'),
-  gauge: I('<path d="M3.5 16a9 9 0 1 1 17 0"/><path d="m12 13 4-4"/><circle cx="12" cy="13" r="1"/>'),
-  panel: I('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>'),
-  search: I('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>', 16),
-  plus: I('<path d="M12 5v14M5 12h14"/>', 16),
-  sun: I('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
-  moon: I('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
-  pin: I('<path d="M12 17v5"/><path d="M9 3h6l-1 7 4 3v2H6v-2l4-3z"/>', 16),
-  trash: I('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>', 16),
-  check: I('<path d="m5 12 5 5L20 7"/>', 22),
-  x: I('<path d="M18 6 6 18M6 6l12 12"/>', 16),
-  out: I('<path d="M7 17 17 7M8 7h9v9"/>', 12),
-  refresh: I('<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>', 16),
-  bell: I('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>', 16),
-  todo: I('<rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/>'),
-  edit: I('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>', 16),
-  emptyNote: I('<rect x="6" y="3" width="13" height="17" rx="2"/><path d="M9 8h7M9 11h7M9 14h4"/>', 40),
+  dash: L('layout-dashboard'), folder: L('folder'), money: L('wallet'), gauge: L('activity'), panel: L('panel-left'),
+  search: L('search', 16), plus: L('plus', 16), sun: L('sun'), moon: L('moon'), pin: L('pin', 16), trash: L('trash-2', 16),
+  check: L('circle-check', 22), x: L('x', 16), out: L('arrow-up-right', 13), refresh: L('refresh-cw', 16), bell: L('bell', 16),
+  todo: L('square-check-big'), edit: L('pencil', 16), emptyNote: L('notebook-pen', 36), keys: L('keyboard'),
 };
+// Card heading with a small icon in front.
+const H = (id, icon, text) => `<h2 id="${id}" class="ih">${L(icon, 16)}${text}</h2>`;
+const KIND_ICON = { note: 'sticky-note', todo: 'square-check-big', idea: 'lightbulb', rule: 'scale', infra: 'server' };
+const kindTag = (k) => `<span class="tag k-${k}">${L(KIND_ICON[k] || 'sticky-note', 12)}${KIND_LABEL[k] || k}</span>`;
 
 // Notes: links become clickable, **bold** and `code` render.
 function fmt(text) {
@@ -105,7 +96,7 @@ let toastTimer;
 function toast(msg, { undo, error } = {}) {
   clearTimeout(toastTimer);
   S.undo = undo || null;
-  $('#toast').innerHTML = `<div class="toast${error ? ' err' : ''}">${error ? '' : `<span style="color:#22C55E">${I('<path d="m5 12 5 5L20 7"/>', 18)}</span>`}<span>${esc(msg)}</span>${undo ? '<button data-act="undo">Undo</button>' : ''}</div>`;
+  $('#toast').innerHTML = `<div class="toast${error ? ' err' : ''}">${error ? L('circle-alert', 18) : `<span style="color:#22C55E;display:inline-flex">${L('circle-check', 18)}</span>`}<span>${esc(msg)}</span>${undo ? '<button data-act="undo">Undo</button>' : ''}</div>`;
   toastTimer = setTimeout(() => { $('#toast').innerHTML = ''; S.undo = null; }, error ? 6000 : 5000);
 }
 const fail = (e) => toast(e.message || 'Something went wrong', { error: true });
@@ -185,7 +176,7 @@ function shell(r, content, crumb) {
       <button class="nav" data-act="new-project" aria-label="Add project">${ICON.plus}<span class="lbl">Add project</span></button>
     </div>
     <div style="margin-top:auto;display:flex;flex-direction:column;gap:2px">
-      <button class="nav" data-act="shortcuts" aria-label="Keyboard shortcuts">${I('<rect x="2" y="6" width="20" height="12" rx="2.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>')}<span class="lbl">Shortcuts</span><span class="kbd lbl" style="margin-left:auto">?</span></button>
+      <button class="nav" data-act="shortcuts" aria-label="Keyboard shortcuts">${ICON.keys}<span class="lbl">Shortcuts</span><span class="kbd lbl" style="margin-left:auto">?</span></button>
       <button class="nav" data-act="theme" aria-label="${isDark() ? 'Switch to light mode' : 'Switch to dark mode'}">${isDark() ? ICON.sun : ICON.moon}<span class="lbl">${isDark() ? 'Light mode' : 'Dark mode'}</span></button>
     </div>
   </aside>
@@ -204,7 +195,7 @@ function shell(r, content, crumb) {
 <nav class="tabbar" aria-label="Tabs">
   <a href="#/" class="${on('dashboard').trim()}">${ICON.dash}Home</a>
   <a href="#/projects" class="${on('projects').trim()}">${ICON.folder}Projects</a>
-  <div class="plus"><button data-act="new-note" aria-label="New note">${I('<path d="M12 5v14M5 12h14"/>', 24)}</button></div>
+  <div class="plus"><button data-act="new-note" aria-label="New note">${L('plus', 24)}</button></div>
   <a href="#/monitoring" class="${on('monitoring').trim()}">${ICON.gauge}Status</a>
   <a href="#/finances" class="${on('finances').trim()}">${ICON.money}Money</a>
 </nav>`;
@@ -223,7 +214,7 @@ function projectCard(p) {
   </article>`;
 }
 
-const projectRow = (p) => `<a class="prow" href="#/p/${esc(p.id)}">${tile(p)}<span class="grow"><b>${esc(p.name)}</b><span>${p.latest ? esc(p.latest.text) : esc(p.type)}</span></span>${pill(p.status)}<span class="chev">${I('<path d="m9 6 6 6-6 6"/>', 16)}</span></a>`;
+const projectRow = (p) => `<a class="prow" href="#/p/${esc(p.id)}">${tile(p)}<span class="grow"><b>${esc(p.name)}</b><span>${p.latest ? esc(p.latest.text) : esc(p.type)}</span></span>${pill(p.status)}<span class="chev">${L('chevron-right', 16)}</span></a>`;
 
 function viewDashboard(d) {
   const f = d.projects.find((p) => p.id === d.featured) || d.projects[0];
@@ -251,33 +242,33 @@ function viewDashboard(d) {
       <p class="d-only" style="margin:0;font-size:16px;color:var(--body)">${esc(f.description)}</p>
       ${featuredNote ? `<div class="well"><p class="label">Latest note</p><p class="fmt" style="font-size:15px;color:var(--text2)">${fmt(featuredNote.text)}</p></div>` : `<div class="empty"><span>${ICON.emptyNote}</span><span style="display:flex;flex-direction:column;gap:2px"><b style="font-weight:500;color:var(--text2)">No notes yet</b><a href="#/p/${esc(f.id)}">Write the first one →</a></span></div>`}
       <div class="d-only" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
-        <div class="stat"><b>${f.open_todos}</b><span>Open to-dos</span></div>
-        <div class="stat"><b>${(f.links || []).length}</b><span>Links</span></div>
-        <div class="stat"><b>${esc(f.hosting || '—')}</b><span>Hosting</span></div>
+        <div class="stat"><b>${f.open_todos}</b><span>${L('list-todo', 14)}Open to-dos</span></div>
+        <div class="stat"><b>${(f.links || []).length}</b><span>${L('link', 14)}Links</span></div>
+        <div class="stat"><b>${esc(f.hosting || '—')}</b><span>${L('server', 14)}Hosting</span></div>
       </div>
-      <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:auto">${(f.links || []).slice(0, 3).map((l) => `<a class="chip" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)} ${ICON.out}</a>`).join('')}<a class="btn dark" style="margin-left:auto" href="#/p/${esc(f.id)}">Open project →</a></div>
+      <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:auto">${(f.links || []).slice(0, 3).map((l) => `<a class="chip" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)} ${ICON.out}</a>`).join('')}<a class="btn dark" style="margin-left:auto" href="#/p/${esc(f.id)}">Open project ${L('arrow-right', 15)}</a></div>
     </article>` : ''}
-    <section class="card span2 rows2 rise o3" aria-labelledby="act-h"><div class="card-head"><h2 id="act-h">Latest activity</h2><span class="muted">Newest first</span></div>
+    <section class="card span2 rows2 rise o3" aria-labelledby="act-h"><div class="card-head">${H('act-h', 'history', 'Latest activity')}<span class="muted">Newest first</span></div>
       <ol class="feed">${d.events.map((e, i) => `<li><span class="ring${i === 0 ? ' fill' : ''}" style="--c:${esc(e.color || (e.level === 'bad' ? 'var(--bad)' : 'var(--hover)'))}"></span><span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span class="who"><b>${esc(e.project_name || 'Hub')}</b><span class="muted" style="flex:none;font-size:12px">${esc(rel(e.created_at))}</span></span><span class="what">${esc(e.text)}</span></span></li>`).join('') || '<li class="muted">Nothing yet.</li>'}</ol>
     </section>
     <section class="card span3 rise d-only" aria-labelledby="st-h">
-      <div class="card-head"><h2 id="st-h">Site status</h2><span class="row" style="gap:12px;font-size:12px">${known.length ? (down.length ? `<span class="row" style="gap:6px;color:var(--bad);font-weight:500"><span class="sdot bad"></span>${down.length} down</span>` : '<span class="row" style="gap:6px;font-weight:500"><span class="sdot glow"></span>All up</span>') : '<span class="muted">Waiting for first check</span>'}<a href="#/monitoring" style="font-size:13px">Monitoring →</a></span></div>
+      <div class="card-head">${H('st-h', 'activity', 'Site status')}<span class="row" style="gap:12px;font-size:12px">${known.length ? (down.length ? `<span class="row" style="gap:6px;color:var(--bad);font-weight:500"><span class="sdot bad"></span>${down.length} down</span>` : '<span class="row" style="gap:6px;font-weight:500"><span class="sdot glow"></span>All up</span>') : '<span class="muted">Waiting for first check</span>'}<a href="#/monitoring" style="font-size:13px">Monitoring →</a></span></div>
       <div class="rows">${enabled.map((c) => { const p = projectName[c.project_id] || {}; return `<a href="#/monitoring" class="row" style="padding:9px 0;color:var(--text)"><span class="sdot ${!c.last_at ? 'unk' : c.last_ok ? '' : 'bad'}"></span><span style="flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.3"><span style="font-size:14px;font-weight:500">${esc(p.name || c.project_id)}</span><span class="mono muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(host(c.url))}</span></span><span class="spk ${c.last_at && !c.last_ok ? 'down' : ''}">${spark(c.spark || [], { w: 72, h: 22 })}</span><span class="muted num" style="font-size:12px;min-width:64px;text-align:right">${c.last_at ? (c.last_ok ? `${c.last_ms} ms` : esc(c.last_error || 'Down')) : '—'}</span></a>`; }).join('')}</div>
     </section>
     <section class="card span3 rise o4" aria-labelledby="mo-h" style="display:flex;flex-direction:column;gap:14px">
-      <div class="card-head" style="margin:0"><h2 id="mo-h">Money · this month</h2><a href="#/finances" style="font-size:13px">Finances →</a></div>
+      <div class="card-head" style="margin:0">${H('mo-h', 'wallet', 'Money · this month')}<a href="#/finances" style="font-size:13px">Finances →</a></div>
       ${m.income || m.costs ? `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
-        <div class="stat"><span>Income</span><b style="font-size:22px">${money(m.income)}</b></div>
-        <div class="stat"><span>Costs</span><b style="font-size:22px">${money(m.costs)}</b></div>
-        <div class="stat"><span>Net</span><b style="font-size:22px">${money(m.net)}</b></div></div>`
+        <div class="stat"><span>${L('trending-up', 14)}Income</span><b style="font-size:22px">${money(m.income)}</b></div>
+        <div class="stat"><span>${L('trending-down', 14)}Costs</span><b style="font-size:22px">${money(m.costs)}</b></div>
+        <div class="stat"><span>${L('scale', 14)}Net</span><b style="font-size:22px">${money(m.net)}</b></div></div>`
         : `<div class="empty">Nothing recorded this month. Tournament Central's $5 charges land here automatically once payments are on; add costs on the Finances page.</div>`}
       ${d.renewal ? `<p class="muted" style="margin:0;font-size:13px">Next renewal: <span class="mono" style="color:var(--text2)">${esc(d.renewal.domain)}</span> · ${esc(dateLabel(d.renewal.renews_on))}</p>` : ''}
     </section>
-    <section class="card span3 rise o1" aria-labelledby="td-h"><div class="card-head"><h2 id="td-h">To do</h2><span class="muted">${openTodos} open</span></div>
+    <section class="card span3 rise o1" aria-labelledby="td-h"><div class="card-head">${H('td-h', 'list-todo', 'To do')}<span class="muted">${openTodos} open</span></div>
       ${d.todos.map((t) => todoRow(t, true)).join('') || '<p class="muted" style="margin:8px 0 0;font-size:14px">No to-dos. Add one with a note tagged “To do”.</p>'}
     </section>
-    <section class="card span3 rise d-only" aria-labelledby="ql-h"><div class="card-head"><h2 id="ql-h">Quick links</h2></div>
-      ${allLinks.map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener" class="row" style="min-height:40px;border-top:1px solid var(--border);color:var(--text2);font-size:14px;gap:10px"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(l.color)}"></span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(host(l.url))}</span><span class="muted">↗</span></a>`).join('')}
+    <section class="card span3 rise d-only" aria-labelledby="ql-h"><div class="card-head">${H('ql-h', 'link', 'Quick links')}</div>
+      ${allLinks.map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener" class="row" style="min-height:40px;border-top:1px solid var(--border);color:var(--text2);font-size:14px;gap:10px"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(l.color)}"></span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(host(l.url))}</span><span class="muted">${L('arrow-up-right', 14)}</span></a>`).join('')}
     </section>
   </div>
   <section style="margin-top:44px" aria-labelledby="ap-h">
@@ -318,10 +309,10 @@ function viewProject(d) {
       <p class="muted" style="margin:6px 0 0;max-width:620px">${esc(p.description)}</p>
       <p class="muted" style="margin:10px 0 0;font-size:13px;display:flex;flex-wrap:wrap;gap:6px 16px">${p.type ? `<span>${esc(p.type)}</span>` : ''}${p.hosting ? `<span>${esc(p.hosting)}</span>` : ''}${checks.map((c) => `<span class="row" style="gap:6px"><span class="sdot ${!c.last_at ? 'unk' : c.last_ok ? '' : 'bad'}"></span>${esc(c.name)} ${c.last_at ? (c.last_ok ? 'up' : 'down') : ''}</span>`).join('')}</p>
     </div></div>
-    <div class="row acts" style="gap:10px;flex-wrap:wrap;align-items:flex-start"><button class="btn" data-act="edit-project">Edit project</button>${p.status !== 'planned' && d.links[0] ? `<a class="btn primary" href="${esc(d.links[0].url)}" target="_blank" rel="noopener">Open ${esc(d.links[0].label.toLowerCase())} ↗</a>` : ''}</div>
+    <div class="row acts" style="gap:10px;flex-wrap:wrap;align-items:flex-start"><button class="btn" data-act="edit-project">${L('pencil', 15)}Edit project</button>${p.status !== 'planned' && d.links[0] ? `<a class="btn primary" href="${esc(d.links[0].url)}" target="_blank" rel="noopener">Open ${esc(d.links[0].label.toLowerCase())} ${L('arrow-up-right', 15)}</a>` : ''}</div>
   </div>
   <section aria-label="Quick links" class="rise qlinks" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin-bottom:32px">
-    ${d.links.map((l) => `<a class="qlink" href="${esc(l.url)}" target="_blank" rel="noopener"><span class="l">${esc(l.label)}</span><span class="u">${esc(host(l.url))} ↗</span></a>`).join('')}
+    ${d.links.map((l) => `<a class="qlink" href="${esc(l.url)}" target="_blank" rel="noopener"><span class="l">${esc(l.label)}</span><span class="u">${esc(host(l.url))} ${L('arrow-up-right', 13)}</span></a>`).join('')}
     <button class="qlink add" data-act="add-link">+ Add link</button>
   </section>
   ${S.showForm === 'link' ? `<form class="card rise" data-form="link" style="margin:-16px 0 24px;display:flex;flex-direction:column;gap:12px"><div class="form-row"><label class="field"><span>Name</span><input class="input" name="label" required maxlength="40" placeholder="Admin dashboard"></label><label class="field" style="flex:2 1 280px"><span>Web address</span><input class="input" name="url" type="url" required placeholder="https://"></label></div><div class="row" style="justify-content:flex-end;gap:10px"><button type="button" class="btn" data-act="cancel-form">Cancel</button><button class="btn primary">Save link</button></div></form>` : ''}
@@ -333,13 +324,13 @@ function viewProject(d) {
         <label class="sr" for="note-text">New note</label>
         <textarea class="input" id="note-text" name="text" rows="3" placeholder="Write a note — a to-do, an idea, where you left off…" required maxlength="2000"></textarea>
         <div class="row composer-foot" style="flex-wrap:wrap;justify-content:space-between;margin-top:10px;gap:10px">
-          <div class="row kinds" role="group" aria-label="Note type" style="gap:6px;flex-wrap:wrap">${kinds.map((k) => `<button type="button" class="kind" aria-pressed="${S.kind === k}" data-act="kind" data-v="${k}">${KIND_LABEL[k]}</button>`).join('')}</div>
+          <div class="row kinds" role="group" aria-label="Note type" style="gap:6px;flex-wrap:wrap">${kinds.map((k) => `<button type="button" class="kind" aria-pressed="${S.kind === k}" data-act="kind" data-v="${k}">${L(KIND_ICON[k], 14)}${KIND_LABEL[k]}</button>`).join('')}</div>
           <button class="btn primary">Add note <span class="kbd">⌘↵</span></button>
         </div>
       </form>
       <div style="display:flex;flex-direction:column;gap:10px">
         ${notes.map((n) => `<article class="note-card rise${n.kind === 'todo' && n.done ? ' done' : ''}">
-          <div style="flex:1;min-width:0"><div class="meta"><span class="tag k-${n.kind}">${KIND_LABEL[n.kind]}</span>${n.pinned ? '<span style="font-weight:500;color:var(--body)">Pinned</span>' : ''}<span>· ${esc(rel(n.created_at))}</span>${n.kind === 'todo' ? `<label class="row" style="gap:6px;margin-left:auto;cursor:pointer"><input type="checkbox" data-act="todo" data-id="${n.id}" ${n.done ? 'checked' : ''} style="accent-color:var(--accent)"> Done</label>` : ''}</div>${S.editing === n.id ? `<form data-form="edit-note" data-id="${n.id}" class="edit-note"><label class="sr" for="en-${n.id}">Edit note</label><textarea class="input" id="en-${n.id}" name="text" rows="3" required maxlength="2000">${esc(n.text)}</textarea><div class="row" style="justify-content:flex-end;gap:8px;margin-top:8px"><button type="button" class="btn small" data-act="cancel-edit">Cancel</button><button class="btn small primary">Save <span class="kbd">⌘↵</span></button></div></form>` : `<p class="fmt" data-act="edit-note" data-id="${n.id}" title="Click to edit">${fmt(n.text)}</p>`}</div>
+          <div style="flex:1;min-width:0"><div class="meta">${kindTag(n.kind)}${n.pinned ? '<span style="font-weight:500;color:var(--body)">Pinned</span>' : ''}<span>· ${esc(rel(n.created_at))}</span>${n.kind === 'todo' ? `<label class="row" style="gap:6px;margin-left:auto;cursor:pointer"><input type="checkbox" data-act="todo" data-id="${n.id}" ${n.done ? 'checked' : ''} style="accent-color:var(--accent)"> Done</label>` : ''}</div>${S.editing === n.id ? `<form data-form="edit-note" data-id="${n.id}" class="edit-note"><label class="sr" for="en-${n.id}">Edit note</label><textarea class="input" id="en-${n.id}" name="text" rows="3" required maxlength="2000">${esc(n.text)}</textarea><div class="row" style="justify-content:flex-end;gap:8px;margin-top:8px"><button type="button" class="btn small" data-act="cancel-edit">Cancel</button><button class="btn small primary">Save <span class="kbd">⌘↵</span></button></div></form>` : `<p class="fmt" data-act="edit-note" data-id="${n.id}" title="Click to edit">${fmt(n.text)}</p>`}</div>
           <div class="acts"><button class="icon-btn" data-act="edit-note" data-id="${n.id}" aria-label="Edit note" title="Edit">${ICON.edit}</button><button class="icon-btn${n.pinned ? ' pinned-on' : ''}" data-act="pin" data-id="${n.id}" data-v="${n.pinned ? 0 : 1}" aria-pressed="${!!n.pinned}" aria-label="${n.pinned ? 'Unpin note' : 'Pin note'}" title="${n.pinned ? 'Unpin' : 'Pin'}">${ICON.pin}</button><button class="icon-btn" data-act="del-note" data-id="${n.id}" aria-label="Delete note" title="Delete">${ICON.trash}</button></div>
         </article>`).join('') || `<div class="empty big">${ICON.emptyNote}<b style="color:var(--text)">A clean slate</b><span>Jot down where you left off, a bug to fix, or an idea.</span></div>`}
       </div>` : `
@@ -347,9 +338,9 @@ function viewProject(d) {
         <div style="padding:14px 18px"><button class="btn small" data-act="add-link">+ Add a link</button></div></div>`}
     </section>
     <aside class="narrow">
-      <div class="card"><h2 style="margin-bottom:4px">Open to-dos</h2><p class="muted" style="margin:0 0 6px;font-size:13px">From this project's “To do” notes</p>${open.map((t) => `<p style="margin:0;padding:10px 0;border-top:1px solid var(--border);font-size:14px;color:var(--text2)">${esc(t.text)}</p>`).join('') || '<p class="muted" style="margin:0;padding:10px 0;border-top:1px solid var(--border);font-size:14px">All clear.</p>'}</div>
-      <div class="card"><h2 style="margin-bottom:8px">Activity</h2>${d.events.map((e) => `<p style="margin:0;padding:8px 0;border-top:1px solid var(--border);font-size:13px;color:var(--text2);display:flex;justify-content:space-between;gap:10px"><span style="min-width:0;overflow-wrap:anywhere">${esc(e.text)}</span><span class="muted" style="flex:none">${esc(rel(e.created_at))}</span></p>`).join('') || '<p class="muted" style="margin:0;font-size:13px">Nothing yet.</p>'}</div>
-      ${d.incidents.length ? `<div class="card"><h2 style="margin-bottom:8px">Incidents</h2>${d.incidents.map((i) => `<p style="margin:0;padding:8px 0;border-top:1px solid var(--border);font-size:13px"><span class="pill ${i.resolved_at ? 'up' : 'down'}" style="margin-right:6px">${i.resolved_at ? 'Resolved' : 'Open'}</span>${esc(i.title)} · <span class="muted">${esc(rel(i.started_at))}</span></p>`).join('')}</div>` : ''}
+      <div class="card"><h2 class="ih" style="margin-bottom:4px">${L('list-todo', 16)}Open to-dos</h2><p class="muted" style="margin:0 0 6px;font-size:13px">From this project's “To do” notes</p>${open.map((t) => `<p style="margin:0;padding:10px 0;border-top:1px solid var(--border);font-size:14px;color:var(--text2)">${esc(t.text)}</p>`).join('') || '<p class="muted" style="margin:0;padding:10px 0;border-top:1px solid var(--border);font-size:14px">All clear.</p>'}</div>
+      <div class="card"><h2 class="ih" style="margin-bottom:8px">${L('history', 16)}Activity</h2>${d.events.map((e) => `<p style="margin:0;padding:8px 0;border-top:1px solid var(--border);font-size:13px;color:var(--text2);display:flex;justify-content:space-between;gap:10px"><span style="min-width:0;overflow-wrap:anywhere">${esc(e.text)}</span><span class="muted" style="flex:none">${esc(rel(e.created_at))}</span></p>`).join('') || '<p class="muted" style="margin:0;font-size:13px">Nothing yet.</p>'}</div>
+      ${d.incidents.length ? `<div class="card"><h2 class="ih" style="margin-bottom:8px">${L('circle-alert', 16)}Incidents</h2>${d.incidents.map((i) => `<p style="margin:0;padding:8px 0;border-top:1px solid var(--border);font-size:13px"><span class="pill ${i.resolved_at ? 'up' : 'down'}" style="margin-right:6px">${i.resolved_at ? 'Resolved' : 'Open'}</span>${esc(i.title)} · <span class="muted">${esc(rel(i.started_at))}</span></p>`).join('')}</div>` : ''}
     </aside>
   </div>
 </div>`;
@@ -376,7 +367,7 @@ function viewMonitoring(d) {
   <div class="page-head rise"><div><h1 class="d-only">Monitoring</h1><p>Uptime, crashes, slow pages, and failed deploys for every site.</p></div>
     <div class="row" style="gap:12px;flex-wrap:wrap"><span class="muted" style="font-size:13px">Last checked ${esc(rel(lastAt))}</span><button class="btn primary" data-act="run-checks">${ICON.refresh}Run checks now</button></div></div>
   <section class="card banner rise" aria-label="Overall status" style="margin-bottom:16px">
-    <span class="badge${down.length ? ' bad' : waiting === enabled.length ? ' wait' : ''}" aria-hidden="true">${down.length ? I('<path d="M12 8v5M12 16h.01"/><circle cx="12" cy="12" r="9"/>', 22) : waiting === enabled.length ? I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', 22) : ICON.check}</span>
+    <span class="badge${down.length ? ' bad' : waiting === enabled.length ? ' wait' : ''}" aria-hidden="true">${down.length ? L('circle-alert', 22) : waiting === enabled.length ? L('clock', 22) : ICON.check}</span>
     <div style="flex:1;min-width:0"><p style="margin:0;font-size:18px;font-weight:600">${down.length ? `${down.length} ${down.length === 1 ? 'site is' : 'sites are'} down` : waiting === enabled.length ? 'Waiting for the first check' : 'All systems operational'}</p>
     <p class="muted" style="margin:2px 0 0;font-size:14px">${enabled.length} checks every minute · ${openInc} open incident${openInc === 1 ? '' : 's'} · alerts on ${d.push_devices} device${d.push_devices === 1 ? '' : 's'}</p></div>
     ${d.push_devices ? `<button class="btn" data-act="push-test">${ICON.bell}Send a test alert</button>` : `<button class="btn primary" data-act="push-on">${ICON.bell}Turn on alerts on this device</button>`}
@@ -391,10 +382,10 @@ function viewMonitoring(d) {
       </article>`; }).join('')}
   </div>
   <div class="split" style="margin-top:16px">
-    <section class="card wide" aria-labelledby="inc-h"><h2 id="inc-h" style="margin-bottom:10px">Incidents</h2>
+    <section class="card wide" aria-labelledby="inc-h"><h2 id="inc-h" class="ih" style="margin-bottom:10px">${L('circle-alert', 16)}Incidents</h2>
       ${d.incidents.map((i) => `<div style="border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-top:10px"><div class="row" style="flex-wrap:wrap;gap:8px 10px"><span class="pill ${i.resolved_at ? 'up' : 'down'}">${i.resolved_at ? 'Resolved' : 'Open'}</span><span class="row" style="gap:6px;font-size:13px;font-weight:500"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(i.color || '#52525B')}"></span>${esc(i.project_name || 'Hub')}</span><span class="muted" style="margin-left:auto;font-size:12px">${esc(rel(i.started_at))}${i.resolved_at ? ` · lasted ${Math.max(1, Math.round((i.resolved_at - i.started_at) / 60000))} min` : ''}</span></div><p style="margin:8px 0 0;font-weight:600">${esc(i.title)}</p>${i.detail ? `<p class="muted" style="margin:2px 0 0;font-size:14px">${esc(i.detail)}</p>` : ''}${i.resolved_at ? '' : `<button class="btn small" style="margin-top:10px" data-act="resolve" data-id="${i.id}">Mark resolved</button>`}</div>`).join('') || '<p class="muted" style="margin:0;font-size:14px">No incidents yet.</p>'}
     </section>
-    <section class="card narrow" aria-labelledby="ch-h" style="display:block"><div class="card-head"><h2 id="ch-h">Checks</h2><button class="btn small" data-act="add-check">+ Add</button></div>
+    <section class="card narrow" aria-labelledby="ch-h" style="display:block"><div class="card-head">${H('ch-h', 'shield-check', 'Checks')}<button class="btn small" data-act="add-check">+ Add</button></div>
       ${S.showForm === 'check' ? `<form data-form="check" style="display:flex;flex-direction:column;gap:10px;margin:10px 0"><label class="field"><span>Project</span><select class="input" name="project_id">${d.projects.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label><label class="field"><span>Name</span><input class="input" name="name" required maxlength="40" placeholder="Health"></label><label class="field"><span>Address to call</span><input class="input" name="url" type="url" required placeholder="https://…/health"></label><label class="field"><span>Text that must appear (optional)</span><input class="input" name="expect_text" maxlength="120"></label><div class="row" style="justify-content:flex-end;gap:8px"><button type="button" class="btn small" data-act="cancel-form">Cancel</button><button class="btn small primary">Save check</button></div></form>` : ''}
       ${d.checks.map((c) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc((proj[c.project_id] || {}).color || '#52525B')}"></span><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span style="font-size:14px">${esc((proj[c.project_id] || {}).name || c.project_id)} · ${esc(c.name)}</span><span class="mono muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.url)}</span></span><input type="checkbox" class="switch" role="switch" aria-label="Check ${esc(c.name)} on" data-act="check-on" data-id="${c.id}" ${c.enabled ? 'checked' : ''}></div>`).join('')}
     </section>
@@ -424,32 +415,32 @@ function viewFinances(d) {
   const html = `<div class="page">
   <div class="page-head rise"><div><h1 class="d-only">Finances</h1><p>What each site earns and costs.</p></div>
     <div class="row" style="gap:10px;flex-wrap:wrap"><div class="seg" role="group" aria-label="Period"><button class="${d.period === 'month' ? 'on' : ''}" aria-pressed="${d.period === 'month'}" data-act="period" data-v="month">Month</button><button class="${d.period === 'year' ? 'on' : ''}" aria-pressed="${d.period === 'year'}" data-act="period" data-v="year">Year</button></div>
-    <a class="btn" href="/api/ledger.csv" download>Export CSV</a><button class="btn primary" data-act="add-entry">${ICON.plus}Add entry</button></div></div>
+    <a class="btn" href="/api/ledger.csv" download>${L('download', 15)}Export CSV</a><button class="btn primary" data-act="add-entry">${ICON.plus}Add entry</button></div></div>
   ${S.showForm === 'entry' ? `<form class="card rise" data-form="entry" style="margin-bottom:16px;display:flex;flex-direction:column;gap:12px"><h2>Add an entry</h2>
     <div class="form-row"><label class="field" style="flex:2 1 240px"><span>What is it?</span><input class="input" name="description" required maxlength="200" placeholder="Railway — November usage"></label><label class="field"><span>Amount (USD)</span><input class="input" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="0.00"></label><label class="field"><span>Date</span><input class="input" name="occurred_on" type="date" value="${esc(d.today)}"></label></div>
     <div class="form-row"><label class="field"><span>Type</span><select class="input" name="kind"><option value="cost">Cost</option><option value="income">Income</option><option value="fee">Fee</option><option value="refund">Refund</option></select></label><label class="field"><span>Site</span><select class="input" name="project_id"><option value="">Shared / none</option>${d.projects.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label></div>
     <div class="row" style="justify-content:flex-end;gap:10px"><button type="button" class="btn" data-act="cancel-form">Cancel</button><button class="btn primary">Save entry</button></div></form>` : ''}
   <div class="kpis rise">
-    <div class="kpi"><p class="l">Income ${per}</p><p class="v">${money(t.income)}</p><p class="s">Tournament Central $5 fees</p></div>
-    <div class="kpi"><p class="l">Costs ${per}</p><p class="v">${money(t.costs)}</p><p class="s">Hosting, domains, Stripe fees</p></div>
-    <div class="kpi"><p class="l">Net ${per}</p><p class="v">${money(t.net)}</p><p class="s">${t.net >= 0 ? 'Income covers costs' : 'Costs exceed income'}</p></div>
-    <div class="kpi"><p class="l">Next renewal</p><p class="v mono" style="font-size:18px;padding-top:6px">${next ? esc(next.domain) : '—'}</p><p class="s">${next ? `${esc(dateLabel(next.renews_on))} · ${money(next.price_cents)}` : 'Add your domains below'}</p></div>
+    <div class="kpi"><p class="l">${L('trending-up', 14)}Income ${per}</p><p class="v">${money(t.income)}</p><p class="s">Tournament Central $5 fees</p></div>
+    <div class="kpi"><p class="l">${L('trending-down', 14)}Costs ${per}</p><p class="v">${money(t.costs)}</p><p class="s">Hosting, domains, Stripe fees</p></div>
+    <div class="kpi"><p class="l">${L('scale', 14)}Net ${per}</p><p class="v">${money(t.net)}</p><p class="s">${t.net >= 0 ? 'Income covers costs' : 'Costs exceed income'}</p></div>
+    <div class="kpi"><p class="l">${L('calendar-clock', 14)}Next renewal</p><p class="v mono" style="font-size:18px;padding-top:6px">${next ? esc(next.domain) : '—'}</p><p class="s">${next ? `${esc(dateLabel(next.renews_on))} · ${money(next.price_cents)}` : 'Add your domains below'}</p></div>
   </div>
   <div class="split" style="margin-top:16px">
-    <section class="card wide" aria-labelledby="inc-h"><div class="card-head"><h2 id="inc-h">Income by month</h2><span class="muted">Last 6 months</span></div>
+    <section class="card wide" aria-labelledby="inc-h"><div class="card-head">${H('inc-h', 'chart-column', 'Income by month')}<span class="muted">Last 6 months</span></div>
       <div class="bars" role="img" aria-label="${esc('Income by month: ' + months.map((m) => `${m} ${money(inc[m])}`).join(', '))}" style="margin-top:12px">${months.map((m, i) => `<div class="col${i === 5 ? ' last' : ''}"><span class="val">${money(inc[m])}</span><span class="bar" style="height:${((inc[m] / max) * 100).toFixed(1)}%"></span></div>`).join('')}</div>
       <div class="months">${months.map((m) => `<span>${new Date(m + '-15T12:00:00Z').toLocaleDateString('en-US', { month: 'short' })}</span>`).join('')}</div>
     </section>
-    <section class="card narrow" aria-labelledby="bp-h" style="display:block"><h2 id="bp-h" style="margin-bottom:8px">By site · ${per}</h2>
+    <section class="card narrow" aria-labelledby="bp-h" style="display:block"><h2 id="bp-h" class="ih" style="margin-bottom:8px">${L('globe', 16)}By site · ${per}</h2>
       ${prows.map((r) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px"><span class="dot" style="background:${esc(r.color)}"></span><span style="flex:1;font-size:14px">${esc(r.name)}</span><span style="font-size:13px;text-align:right"><span style="font-weight:600">${money(r.income - r.costs)}</span><br><span class="muted">${money(r.income)} in · ${money(r.costs)} out</span></span></div>`).join('') || '<p class="muted" style="margin:0;font-size:14px">Nothing recorded yet.</p>'}
     </section>
   </div>
   <div class="split" style="margin-top:16px">
-    <section class="card wide" style="padding:0;overflow:hidden" aria-labelledby="led-h"><div class="card-head" style="padding:18px 20px 6px"><h2 id="led-h">Ledger</h2><span class="muted">Newest first</span></div>
+    <section class="card wide" style="padding:0;overflow:hidden" aria-labelledby="led-h"><div class="card-head" style="padding:18px 20px 6px">${H('led-h', 'receipt', 'Ledger')}<span class="muted">Newest first</span></div>
       <div class="m-only" style="padding:0 16px 6px">${d.rows.map((r) => `<div class="lrow"><span class="grow"><b>${esc(r.description)}</b><span>${esc(dateLabel(r.occurred_on))} · ${esc(r.project_name || 'Shared')} · ${esc(r.kind)}</span></span><b style="font-size:14px;color:${r.kind === 'income' ? 'var(--good)' : 'inherit'}">${r.kind === 'income' ? '+' : '−'}${money(r.amount_cents).replace('−', '')}</b>${r.source === 'manual' ? `<button class="icon-btn" data-act="del-entry" data-id="${r.id}" aria-label="Delete entry">${ICON.trash}</button>` : ''}</div>`).join('') || '<p class="muted" style="font-size:14px">No entries yet.</p>'}</div><div class="table-wrap collapse"><table class="t" style="min-width:560px"><thead><tr><th scope="col">Date</th><th scope="col">What</th><th scope="col">Site</th><th scope="col" class="num">Amount</th><th scope="col"><span class="sr">Delete</span></th></tr></thead><tbody>
       ${d.rows.map((r) => `<tr><td class="muted" style="white-space:nowrap">${esc(dateLabel(r.occurred_on))}</td><td>${esc(r.description)} <span class="muted" style="font-size:12px">· ${esc(r.kind)}${r.source !== 'manual' ? ' · ' + esc(r.source) : ''}</span></td><td>${esc(r.project_name || '—')}</td><td class="num" style="font-weight:500;color:${r.kind === 'income' ? 'var(--good)' : 'inherit'}">${r.kind === 'income' ? '+' : '−'}${money(r.amount_cents).replace('−', '')}</td><td style="width:44px">${r.source === 'manual' ? `<button class="icon-btn" data-act="del-entry" data-id="${r.id}" aria-label="Delete entry">${ICON.trash}</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No entries yet.</td></tr>'}
       </tbody></table></div></section>
-    <section class="card narrow" aria-labelledby="ren-h" style="display:block"><div class="card-head"><h2 id="ren-h">Domain renewals</h2><button class="btn small" data-act="add-renewal">+ Add</button></div>
+    <section class="card narrow" aria-labelledby="ren-h" style="display:block"><div class="card-head">${H('ren-h', 'calendar-clock', 'Domain renewals')}<button class="btn small" data-act="add-renewal">+ Add</button></div>
       ${S.showForm === 'renewal' ? `<form data-form="renewal" style="display:flex;flex-direction:column;gap:10px;margin:10px 0"><label class="field"><span>Domain</span><input class="input mono" name="domain" required placeholder="tournamentcentral.app"></label><div class="form-row"><label class="field"><span>Renews on</span><input class="input" type="date" name="renews_on" required></label><label class="field"><span>Price (USD)</span><input class="input" type="number" min="0" step="0.01" name="price"></label></div><label class="field"><span>Site</span><select class="input" name="project_id"><option value="">None</option>${d.projects.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label><div class="row" style="justify-content:flex-end;gap:8px"><button type="button" class="btn small" data-act="cancel-form">Cancel</button><button class="btn small primary">Save</button></div></form>` : ''}
       ${d.renewals.map((r) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px"><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span class="mono" style="font-size:14px;font-weight:500">${esc(r.domain)}</span><span class="muted" style="font-size:12px">${esc(dateLabel(r.renews_on))}${r.project_name ? ' · ' + esc(r.project_name) : ''}</span></span><span style="font-size:14px;font-weight:500">${money(r.price_cents)}</span><button class="icon-btn" data-act="del-renewal" data-id="${r.id}" aria-label="Delete renewal">${ICON.trash}</button></div>`).join('') || '<p class="muted" style="margin:6px 0 0;font-size:14px">Add each domain once; the hub shows the next one due.</p>'}
     </section>
@@ -463,14 +454,14 @@ function paletteItems() {
   const q = (S.palette.q || '').trim().toLowerCase();
   const m = (s) => !q || s.toLowerCase().includes(q);
   const actions = [
-    { label: 'New note', hint: 'N', run: () => { S.palette.mode = 'note'; drawPalette(); } },
-    { label: isDark() ? 'Switch to light mode' : 'Switch to dark mode', hint: '', run: () => { setTheme(!isDark()); closePalette(); render({ quiet: true }); } },
-    { label: 'Run uptime checks now', hint: '', run: () => { closePalette(); location.hash = '#/monitoring'; runChecksNow(); } },
-    { label: 'Add an expense', hint: '', run: () => { closePalette(); S.showForm = 'entry'; location.hash = '#/finances'; render(); } },
-    { label: 'Keyboard shortcuts', hint: '?', run: () => { closePalette(); showShortcuts(); } },
+    { label: 'New note', icon: 'notebook-pen', hint: 'N', run: () => { S.palette.mode = 'note'; drawPalette(); } },
+    { label: isDark() ? 'Switch to light mode' : 'Switch to dark mode', icon: isDark() ? 'sun' : 'moon', hint: 'T', run: () => { setTheme(!isDark()); closePalette(); render({ quiet: true }); } },
+    { label: 'Run uptime checks now', icon: 'refresh-cw', hint: '', run: () => { closePalette(); location.hash = '#/monitoring'; runChecksNow(); } },
+    { label: 'Add an expense', icon: 'receipt', hint: '', run: () => { closePalette(); S.showForm = 'entry'; location.hash = '#/finances'; render(); } },
+    { label: 'Keyboard shortcuts', icon: 'keyboard', hint: '?', run: () => { closePalette(); showShortcuts(); } },
   ].filter((a) => m(a.label));
-  const pages = [['Dashboard', '#/'], ['Projects', '#/projects'], ['Monitoring', '#/monitoring'], ['Finances', '#/finances']]
-    .filter(([l]) => m(l)).map(([label, href]) => ({ label, href }));
+  const pages = [['Dashboard', '#/', 'layout-dashboard'], ['Projects', '#/projects', 'folder'], ['Monitoring', '#/monitoring', 'activity'], ['Finances', '#/finances', 'wallet']]
+    .filter(([l]) => m(l)).map(([label, href, icon]) => ({ label, href, icon }));
   const projects = S.projects.filter((p) => m(p.name)).map((p) => ({ label: p.name, href: '#/p/' + p.id, p }));
   const found = S.palette.found && S.palette.found.q === q ? S.palette.found : { notes: [], links: [] };
   const notes = found.notes.map((n) => ({ label: n.text, sub: `${n.project_name} · ${KIND_LABEL[n.kind] || 'Note'}`, href: '#/p/' + n.project_id, p: { color: n.color, ink: n.ink, initials: n.initials } }));
@@ -489,7 +480,7 @@ function drawPalette() {
       <div class="row" style="justify-content:space-between"><h2>New note</h2><span class="kbd">esc</span></div>
       <label class="sr" for="qn">Note</label><textarea class="input" id="qn" name="text" rows="4" required maxlength="2000" placeholder="What's on your mind? A to-do, an idea, where you left off…"></textarea>
       <div class="choices sheet-choices" role="group" aria-label="Project">${S.projects.map((p) => `<button type="button" class="choice" style="--c:${esc(p.color)}" aria-pressed="${p.id === proj}" data-act="qn-project" data-v="${esc(p.id)}"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(p.color)}"></span>${esc(p.name)}</button>`).join('')}</div>
-      <div class="row" style="flex-wrap:wrap;justify-content:space-between;gap:10px"><div class="row kinds" role="group" aria-label="Note type" style="gap:6px;flex-wrap:wrap">${['note', 'todo', 'idea', 'rule'].map((k) => `<button type="button" class="kind" aria-pressed="${(P.kind || 'note') === k}" data-act="qn-kind" data-v="${k}">${KIND_LABEL[k]}</button>`).join('')}</div>
+      <div class="row" style="flex-wrap:wrap;justify-content:space-between;gap:10px"><div class="row kinds" role="group" aria-label="Note type" style="gap:6px;flex-wrap:wrap">${['note', 'todo', 'idea', 'rule'].map((k) => `<button type="button" class="kind" aria-pressed="${(P.kind || 'note') === k}" data-act="qn-kind" data-v="${k}">${L(KIND_ICON[k], 14)}${KIND_LABEL[k]}</button>`).join('')}</div>
       <div class="row sheet-actions" style="gap:8px"><button type="button" class="btn" data-act="close-palette">Cancel</button><button class="btn primary">Save note</button></div></div>
     </div></form></div>`;
     const ta = $('#qn'); ta.value = P.draft || ''; ta.focus();
@@ -502,7 +493,7 @@ function drawPalette() {
   const list = items.map((it, i) => {
     const head = it.group !== group ? `<p class="grp">${it.group}</p>` : '';
     group = it.group;
-    const icon = it.p ? tile(it.p, 'sm') : `<span class="tile sm" style="background:var(--subtle);color:var(--body)" aria-hidden="true">${it.href ? '→' : '+'}</span>`;
+    const icon = it.p ? tile(it.p, 'sm') : `<span class="tile sm ic" aria-hidden="true">${L(it.icon || 'arrow-right', 14)}</span>`;
     const inner = `${icon}<span class="grow">${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</span>${it.hint ? `<span class="kbd">${esc(it.hint)}</span>` : it.url ? '<span class="muted">↗</span>' : ''}`;
     if (it.url) return head + `<a class="cmd${i === P.sel ? ' sel' : ''}" href="${esc(it.url)}" target="_blank" rel="noopener" data-act="close-palette" data-i="${i}">${inner}</a>`;
     return head + (it.href ? `<a class="cmd${i === P.sel ? ' sel' : ''}" href="${it.href}" data-act="close-palette" data-i="${i}">${inner}</a>` : `<button class="cmd${i === P.sel ? ' sel' : ''}" data-act="cmd" data-i="${i}">${inner}</button>`);
