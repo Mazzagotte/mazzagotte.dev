@@ -29,11 +29,12 @@
   "triggers": { "crons": ["* * * * *"] },
   "vars": {
     "TIMEZONE": "America/Denver",
-    "VAPID_SUBJECT": "https://mazzagotte.dev"
-    // Set in the dashboard (Settings → Variables), not here:
-    //   ACCESS_TEAM_DOMAIN  e.g. https://yourteam.cloudflareaccess.com
-    //   ACCESS_AUD          the Application Audience (AUD) tag
-    //   OWNER_EMAIL         your email (optional extra lock)
+    "VAPID_SUBJECT": "https://mazzagotte.dev",
+    // Cloudflare Access (Zero Trust team + the mazzagotte.dev application). Not secret.
+    "ACCESS_TEAM_DOMAIN": "https://divine-union-90c8.cloudflareaccess.com",
+    "ACCESS_AUD": "40dd0ac38862f4709e022b5478aaed54af84589c741eb6cd9f892a1b7d32b131"
+    // Set in the dashboard (Settings → Variables and Secrets), not here:
+    //   OWNER_EMAIL  your email (extra lock; kept out of the repo)
     // Secrets (encrypted): RAILWAY_HOOK_SECRET, DEPLOY_HOOK_SECRET, MONEY_HOOK_SECRET
   }
 }
