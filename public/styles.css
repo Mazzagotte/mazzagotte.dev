@@ -636,3 +636,6 @@ button.site-row.on { background: color-mix(in srgb, var(--accent) 8%, transparen
 .choice .lu { opacity: .8; }
 .drow .btn.small { min-height: 30px; }
 .fin-cols .narrow .oc-row > span[style*="flex:1"] > span:first-child { white-space: normal; overflow-wrap: anywhere; }
+.oc-edit { cursor: pointer; border-radius: 6px; }
+.oc-edit:hover > span:first-child { color: var(--link); }
+.oc-row .icon-btn { width: 32px; height: 32px; }

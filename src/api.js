@@ -575,7 +575,15 @@ export async function handleApi(request, env, ctx) {
   if ((m = path.match(/^\/recurring\/(\d+)$/))) {
     if (method === 'PATCH') {
       const b = await readJson(request);
-      await env.DB.prepare('UPDATE recurring SET active = ? WHERE id = ?').bind(b.active ? 1 : 0, Number(m[1])).run();
+      const sets = []; const vals = [];
+      if ('active' in b) { sets.push('active = ?'); vals.push(b.active ? 1 : 0); }
+      if ('name' in b) { sets.push('name = ?'); vals.push(need(str(b.name, 80), 'Name the bill')); }
+      if ('amount' in b) { const c = Math.round(Number(b.amount) * 100); if (!Number.isFinite(c) || c <= 0) throw new HttpError(400, 'Enter an amount above $0'); sets.push('amount_cents = ?'); vals.push(c); }
+      if ('cadence' in b) { sets.push('cadence = ?'); vals.push(b.cadence === 'yearly' ? 'yearly' : 'monthly'); }
+      if ('next_on' in b) { if (!DATE_RE.test(b.next_on || '')) throw new HttpError(400, 'Pick the next charge date'); sets.push('next_on = ?'); vals.push(b.next_on); }
+      if ('project_id' in b) { sets.push('project_id = ?'); vals.push(str(b.project_id, 24) || null); }
+      if (sets.length) await env.DB.prepare(`UPDATE recurring SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, Number(m[1])).run();
+      await postRecurring(env);
       return json({ ok: true });
     }
     if (method === 'DELETE') {
