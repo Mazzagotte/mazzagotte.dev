@@ -92,6 +92,12 @@ function setTheme(dark) {
   document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#09090B' : '#F7F7F8');
 }
 const isDark = () => document.documentElement.classList.contains('dark');
+const LOOKS = { classic: 'Classic', glass: 'Glass & glow', bold: 'Bold & colorful', sharp: 'Minimal & sharp' };
+const currentLook = () => document.documentElement.dataset.look || 'classic';
+function setLook(look) {
+  if (look === 'classic') delete document.documentElement.dataset.look; else document.documentElement.dataset.look = look;
+  localStorage.setItem('look', look);
+}
 
 // ---------- routing ----------
 function route() {
@@ -151,6 +157,7 @@ function shell(r, content, crumb) {
       <button class="nav" data-act="new-project" aria-label="Add project">${ICON.plus}<span class="lbl">Add project</span></button>
     </div>
     <div style="margin-top:auto;display:flex;flex-direction:column;gap:2px">
+      <button class="nav" data-act="look" aria-label="Change look (now ${esc(LOOKS[currentLook()])})">${I('<circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.7-.8 1.7-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.8-1.7 1.7-1.7H16c3.1 0 5.6-2.5 5.6-5.6C21.9 6 17.4 2 12 2z"/>')}<span class="lbl">Look: ${esc(LOOKS[currentLook()])}</span></button>
       <button class="nav" data-act="theme" aria-label="${isDark() ? 'Switch to light mode' : 'Switch to dark mode'}">${isDark() ? ICON.sun : ICON.moon}<span class="lbl">${isDark() ? 'Light mode' : 'Dark mode'}</span></button>
     </div>
   </aside>
@@ -210,7 +217,7 @@ function viewDashboard(d) {
     <p class="muted" style="margin:0;font-size:14px">${d.projects.length} projects · ${live} live · ${openTodos} open to-dos</p></div>
   <div class="hscroll m-flex" style="margin:0 -16px 12px;padding:0 16px" aria-label="Site status">${enabled.map((c) => { const p = projectName[c.project_id] || {}; return `<a class="status-chip" href="#/monitoring"><span class="sdot ${!c.last_at ? 'unk' : c.last_ok ? 'glow' : 'bad'}"></span>${esc(p.name || c.project_id)}</a>`; }).join('')}</div>
   <div class="bento">
-    ${f ? `<article class="card stripe span4 rows2 rise o2" style="--c:${esc(f.color)};padding:28px;display:flex;flex-direction:column;gap:18px">
+    ${f ? `<article class="card stripe span4 rows2 rise o2 feat" style="--c:${esc(f.color)};padding:28px;display:flex;flex-direction:column;gap:18px">
       <div class="row" style="align-items:flex-start;gap:14px">${tile(f, 'lg')}<div style="flex:1;min-width:0"><p class="muted" style="margin:0;font-size:12px;font-weight:500;letter-spacing:.04em;text-transform:uppercase">Most recent${featuredNote ? ' · ' + esc(rel(featuredNote.updated_at)) : ''}</p><h2 style="margin:2px 0 0;font-size:26px;font-weight:600;letter-spacing:-.02em">${esc(f.name)}</h2></div>${pill(f.status)}</div>
       <p class="d-only" style="margin:0;font-size:16px;color:var(--body)">${esc(f.description)}</p>
       ${featuredNote ? `<div class="well"><p class="label">Latest note</p><p style="font-size:15px;color:var(--text2)">${esc(featuredNote.text)}</p></div>` : `<div class="empty"><span>${ICON.emptyNote}</span><span style="display:flex;flex-direction:column;gap:2px"><b style="font-weight:500;color:var(--text2)">No notes yet</b><a href="#/p/${esc(f.id)}">Write the first one →</a></span></div>`}
@@ -430,7 +437,8 @@ function paletteItems() {
     { label: isDark() ? 'Switch to light mode' : 'Switch to dark mode', hint: '', run: () => { setTheme(!isDark()); closePalette(); render({ quiet: true }); } },
     { label: 'Run uptime checks now', hint: '', run: () => { closePalette(); location.hash = '#/monitoring'; runChecksNow(); } },
     { label: 'Add an expense', hint: '', run: () => { closePalette(); S.showForm = 'entry'; location.hash = '#/finances'; render(); } },
-  ].filter((a) => m(a.label));
+    ...Object.entries(LOOKS).map(([k, l]) => ({ label: `Look: ${l}${currentLook() === k ? ' (current)' : ''}`, hint: '', run: () => { setLook(k); closePalette(); render({ quiet: true }); toast(`Look: ${l}`); } })),
+  ].filter((a) => m(a.label) || (q && 'look style theme'.includes(q) && a.label.startsWith('Look')));
   const pages = [['Dashboard', '#/'], ['Projects', '#/projects'], ['Monitoring', '#/monitoring'], ['Finances', '#/finances']]
     .filter(([l]) => m(l)).map(([label, href]) => ({ label, href }));
   const projects = S.projects.filter((p) => m(p.name)).map((p) => ({ label: p.name, href: '#/p/' + p.id, p }));
@@ -534,6 +542,7 @@ document.addEventListener('click', async (e) => {
     switch (act) {
       case 'side': S.collapsed = !S.collapsed; localStorage.setItem('side', S.collapsed ? 'collapsed' : 'open'); render({ quiet: true }); break;
       case 'theme': setTheme(!isDark()); render({ quiet: true }); break;
+      case 'look': { const keys = Object.keys(LOOKS); const next = keys[(keys.indexOf(currentLook()) + 1) % keys.length]; setLook(next); render({ quiet: true }); toast(`Look: ${LOOKS[next]}`); break; }
       case 'palette': openPalette(); break;
       case 'new-note': openPalette('note'); break;
       case 'close-palette': if (t.tagName !== 'A') e.preventDefault(); closePalette(); break;

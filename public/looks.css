@@ -1,0 +1,135 @@
+/* Three optional looks layered over the base styles. Picked in ⌘K → "Look", saved per device.
+   html[data-look="glass" | "bold" | "sharp"]; no attribute = Classic. */
+
+/* =========================================================
+   GLASS — soft gradient light behind frosted cards, glowing status
+   ========================================================= */
+html[data-look="glass"] {
+  --surface: rgba(255, 255, 255, .62); --well: rgba(255, 255, 255, .55); --subtle: rgba(9, 9, 11, .05);
+  --border: rgba(9, 9, 11, .08); --border2: rgba(9, 9, 11, .14); --input: rgba(255, 255, 255, .7);
+  --glass: rgba(255, 255, 255, .55); --bg: #EEF0F6;
+}
+html[data-look="glass"].dark {
+  --bg: #07080C; --surface: rgba(255, 255, 255, .045); --well: rgba(255, 255, 255, .04); --subtle: rgba(255, 255, 255, .07);
+  --border: rgba(255, 255, 255, .09); --border2: rgba(255, 255, 255, .16); --input: rgba(255, 255, 255, .05);
+  --glass: rgba(10, 11, 16, .55); --hover: rgba(255, 255, 255, .28);
+}
+html[data-look="glass"] body {
+  background:
+    radial-gradient(900px 600px at 8% -10%, rgba(37, 99, 235, .22), transparent 60%),
+    radial-gradient(700px 520px at 100% 10%, rgba(124, 58, 237, .18), transparent 60%),
+    radial-gradient(800px 600px at 50% 110%, rgba(15, 118, 110, .16), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+}
+html[data-look="glass"].dark body {
+  background:
+    radial-gradient(900px 600px at 8% -10%, rgba(37, 99, 235, .28), transparent 60%),
+    radial-gradient(700px 520px at 100% 10%, rgba(124, 58, 237, .22), transparent 60%),
+    radial-gradient(800px 600px at 50% 110%, rgba(13, 148, 136, .18), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+}
+html[data-look="glass"] .card, html[data-look="glass"] .kpi, html[data-look="glass"] .prow, html[data-look="glass"] .qlink,
+html[data-look="glass"] .note-card, html[data-look="glass"] .status-chip, html[data-look="glass"] .dialog {
+  backdrop-filter: blur(18px) saturate(160%); -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 10px 30px rgba(0, 0, 0, .06);
+  border-radius: 20px;
+}
+html[data-look="glass"].dark .card, html[data-look="glass"].dark .kpi, html[data-look="glass"].dark .prow,
+html[data-look="glass"].dark .note-card, html[data-look="glass"].dark .dialog { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 12px 40px rgba(0, 0, 0, .35); }
+html[data-look="glass"] .side { background: var(--glass); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+html[data-look="glass"] .stripe::before { height: 2px; box-shadow: 0 0 18px 2px var(--c); }
+html[data-look="glass"] .feat { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 0 1px color-mix(in srgb, var(--c) 30%, transparent), 0 20px 60px -20px color-mix(in srgb, var(--c) 55%, transparent); }
+html[data-look="glass"] .tile { box-shadow: 0 6px 18px -4px color-mix(in srgb, currentColor 0%, transparent), inset 0 1px 0 rgba(255, 255, 255, .25); }
+html[data-look="glass"] .sdot:not(.bad):not(.unk):not(.off) { box-shadow: 0 0 0 3px rgba(34, 197, 94, .18), 0 0 12px 2px rgba(34, 197, 94, .6); }
+html[data-look="glass"] .sdot.bad { box-shadow: 0 0 12px 2px rgba(239, 68, 68, .7); }
+html[data-look="glass"] .btn.primary, html[data-look="glass"] .tabbar .plus button {
+  background: linear-gradient(135deg, #3B82F6, #7C3AED); border-color: transparent; box-shadow: 0 8px 24px -6px rgba(99, 102, 241, .6);
+}
+html[data-look="glass"] .page-head h1 {
+  background: linear-gradient(90deg, var(--text) 30%, color-mix(in srgb, var(--text) 55%, #7C3AED));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+html[data-look="glass"] .bars .bar { background: linear-gradient(180deg, #60A5FA, #4F46E5); box-shadow: 0 0 16px rgba(79, 70, 229, .45); }
+html[data-look="glass"] .strip span:not(.none):not(.bad):not(.part) { background: linear-gradient(180deg, #4ADE80, #16A34A); }
+html[data-look="glass"] .pill { backdrop-filter: blur(6px); }
+
+/* =========================================================
+   BOLD — project color front and center, big numbers, springy motion
+   ========================================================= */
+html[data-look="bold"] { --radius: 24px; }
+html[data-look="bold"] .card, html[data-look="bold"] .kpi, html[data-look="bold"] .note-card, html[data-look="bold"] .qlink { border-radius: 24px; border-width: 0; box-shadow: 0 1px 0 var(--border), 0 0 0 1px var(--border); }
+html[data-look="bold"] .page-head h1 { font-size: 46px; font-weight: 700; letter-spacing: -.045em; }
+html[data-look="bold"] .card h2 { font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+html[data-look="bold"] .feat { background: var(--c) !important; color: #fff; border: 0; box-shadow: 0 30px 60px -30px var(--c); }
+html[data-look="bold"] .feat::before { display: none; }
+html[data-look="bold"] .feat h2 { font-size: 40px !important; font-weight: 700 !important; letter-spacing: -.04em !important; }
+html[data-look="bold"] .feat .muted, html[data-look="bold"] .feat p, html[data-look="bold"] .feat a { color: rgba(255, 255, 255, .88) !important; }
+html[data-look="bold"] .feat .tile { background: rgba(255, 255, 255, .2) !important; color: #fff !important; }
+html[data-look="bold"] .feat .well, html[data-look="bold"] .feat .stat, html[data-look="bold"] .feat .empty { background: rgba(255, 255, 255, .14); border-color: rgba(255, 255, 255, .2); color: #fff; }
+html[data-look="bold"] .feat .well .label, html[data-look="bold"] .feat .stat span { color: rgba(255, 255, 255, .75); }
+html[data-look="bold"] .feat .stat b { font-size: 34px; }
+html[data-look="bold"] .feat .chip { background: rgba(255, 255, 255, .16); border-color: transparent; color: #fff; }
+html[data-look="bold"] .feat .btn.dark { background: #fff; color: #09090B !important; border-color: #fff; }
+html[data-look="bold"] .feat .pill { background: rgba(255, 255, 255, .22) !important; color: #fff !important; }
+html[data-look="bold"] .stat b, html[data-look="bold"] .kpi .v { font-size: 34px; font-weight: 700; letter-spacing: -.04em; }
+html[data-look="bold"] .tile { border-radius: 14px; font-weight: 700; }
+html[data-look="bold"] .tile:not(.sm) { width: 48px; height: 48px; font-size: 15px; }
+html[data-look="bold"] .tile.lg { width: 64px; height: 64px; border-radius: 18px; font-size: 19px; }
+html[data-look="bold"] .stripe:not(.feat) { background: color-mix(in srgb, var(--c) 7%, var(--surface)); }
+html[data-look="bold"] .stripe:not(.feat)::before { height: 6px; }
+html[data-look="bold"] .prow { border-radius: 22px; border: 0; box-shadow: 0 0 0 1px var(--border); min-height: 76px; }
+html[data-look="bold"] .pill { font-size: 13px; font-weight: 600; padding: 4px 11px; }
+html[data-look="bold"] .btn { border-radius: 999px; font-weight: 600; }
+html[data-look="bold"] .filter, html[data-look="bold"] .seg, html[data-look="bold"] .seg button, html[data-look="bold"] .kind { border-radius: 999px; }
+html[data-look="bold"] .bars .bar { border-radius: 10px 10px 4px 4px; max-width: 56px; }
+html[data-look="bold"] .tabbar .plus button { border-radius: 999px; }
+html[data-look="bold"] a.card, html[data-look="bold"] .prow, html[data-look="bold"] .btn { transition: transform .35s cubic-bezier(.34, 1.56, .64, 1), box-shadow .2s; }
+@media (hover: hover) {
+  html[data-look="bold"] .prow:hover, html[data-look="bold"] article.card:hover { transform: translateY(-3px) scale(1.01); }
+  html[data-look="bold"] .btn:hover { transform: scale(1.04); }
+}
+html[data-look="bold"] .btn:active, html[data-look="bold"] .prow:active { transform: scale(.97); }
+html[data-look="bold"] .todo input { width: 22px; height: 22px; border-radius: 999px; }
+html[data-look="bold"] .greet-sub { font-size: 16px; }
+
+/* =========================================================
+   SHARP — minimal, tight, monospace details, keyboard-first
+   ========================================================= */
+html[data-look="sharp"] {
+  --bg: #FAFAFA; --surface: #FFFFFF; --border: #E5E5E5; --border2: #D4D4D4; --subtle: #F5F5F5; --well: #FAFAFA;
+}
+html[data-look="sharp"].dark { --bg: #000000; --surface: #0A0A0A; --border: #1F1F1F; --border2: #2E2E2E; --subtle: #141414; --well: #0F0F0F; --input: #0A0A0A; --glass: rgba(0, 0, 0, .8); }
+html[data-look="sharp"] .card, html[data-look="sharp"] .kpi, html[data-look="sharp"] .note-card, html[data-look="sharp"] .qlink,
+html[data-look="sharp"] .prow, html[data-look="sharp"] .dialog, html[data-look="sharp"] .well, html[data-look="sharp"] .stat,
+html[data-look="sharp"] .empty, html[data-look="sharp"] .metrics div, html[data-look="sharp"] .status-chip { border-radius: 6px; box-shadow: none !important; }
+html[data-look="sharp"] .btn, html[data-look="sharp"] .chip, html[data-look="sharp"] .input, html[data-look="sharp"] .search-btn,
+html[data-look="sharp"] .filter, html[data-look="sharp"] .seg, html[data-look="sharp"] .kind, html[data-look="sharp"] .choice, html[data-look="sharp"] .icon-btn { border-radius: 6px; }
+html[data-look="sharp"] .seg button { border-radius: 4px; }
+html[data-look="sharp"] .tile { border-radius: 6px !important; }
+html[data-look="sharp"] .pill { border-radius: 4px; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+html[data-look="sharp"] .stripe::before { height: 0; }
+html[data-look="sharp"] .stripe { border-left: 2px solid var(--c); }
+html[data-look="sharp"] .card:not(.feat) h2, html[data-look="sharp"] .well .label, html[data-look="sharp"] .stat span, html[data-look="sharp"] .kpi .l,
+html[data-look="sharp"] .metrics dt, html[data-look="sharp"] .sec, html[data-look="sharp"] .crumb {
+  font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11px !important; font-weight: 500 !important; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+}
+html[data-look="sharp"] .crumb b { color: var(--text); }
+html[data-look="sharp"] .page-head h1 { font-size: 28px; font-weight: 600; letter-spacing: -.02em; }
+html[data-look="sharp"] .feat h2 { font-size: 22px !important; }
+html[data-look="sharp"] .stat b, html[data-look="sharp"] .kpi .v, html[data-look="sharp"] .metrics dd { font-family: 'Geist Mono', ui-monospace, monospace; font-weight: 500; letter-spacing: -.02em; }
+html[data-look="sharp"] .bento, html[data-look="sharp"] .grid { gap: 10px; }
+html[data-look="sharp"] .card { padding: 16px; }
+html[data-look="sharp"] .btn.primary, html[data-look="sharp"] .tabbar .plus button { background: var(--on-bg); border-color: var(--on-bg); color: var(--on-fg); box-shadow: none; }
+html[data-look="sharp"] .btn.primary .kbd { background: transparent; color: inherit; opacity: .6; }
+html[data-look="sharp"] .kbd { border-bottom-width: 1px; }
+html[data-look="sharp"] .nav { border-radius: 4px; min-height: 34px; font-size: 13px; }
+html[data-look="sharp"] .nav.on { box-shadow: inset 2px 0 0 var(--text); }
+html[data-look="sharp"] .bars .bar { border-radius: 2px; background: var(--text); }
+html[data-look="sharp"] .strip { gap: 1px; height: 22px; } html[data-look="sharp"] .strip span { border-radius: 1px; }
+html[data-look="sharp"] .sdot { border-radius: 2px; }
+html[data-look="sharp"] .feed .who b { font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; }
+html[data-look="sharp"] a.card:hover, html[data-look="sharp"] .card.hoverable:hover { transform: none; border-color: var(--text); }
+html[data-look="sharp"] .tabbar .plus button { border-radius: 8px; width: 52px; height: 52px; }
+html[data-look="sharp"] .rise { animation-duration: .2s; }

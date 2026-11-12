@@ -1,6 +1,6 @@
 // mazzagotte.dev service worker: push alerts + a cached app shell.
-const VERSION = 'hub-v1';
-const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/badge-96.png'];
+const VERSION = 'hub-v2';
+const SHELL = ['/', '/index.html', '/styles.css', '/looks.css', '/app.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/badge-96.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).catch(() => {}).then(() => self.skipWaiting()));
