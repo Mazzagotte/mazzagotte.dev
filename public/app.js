@@ -481,8 +481,9 @@ function viewFinances(d) {
       <span class="site-net ${net < 0 ? 'neg' : net > 0 ? 'pos' : ''}">${money(net)}<small>net</small></span>
       ${r.income || r.costs ? `<span class="minibars"><span class="in" style="width:${((r.income / pmax) * 100).toFixed(1)}%"></span><span class="out" style="width:${((r.costs / pmax) * 100).toFixed(1)}%"></span></span>` : ''}
       <span class="muted" style="font-size:12px">${money(r.income)} in · ${money(r.costs)} out${r.bills_monthly ? ` · runs ${money(r.bills_monthly)}/mo` : ''}</span></a>`; }).join('')}</div></section>`}
-  <div class="split" style="margin-top:16px">
-    <section class="card wide rise" aria-labelledby="inc-h"><div class="card-head">${H('inc-h', 'chart-column', `Income and costs · ${esc(scope)}`)}<span class="legend"><span><i style="background:var(--s-in)"></i>Income</span><span><i style="background:var(--s-out)"></i>Costs</span></span></div>
+  <div class="split fin-cols" style="margin-top:16px">
+    <div class="wide col">
+    <section class="card rise" aria-labelledby="inc-h"><div class="card-head">${H('inc-h', 'chart-column', `Income and costs · ${esc(scope)}`)}<span class="legend"><span><i style="background:var(--s-in)"></i>Income</span><span><i style="background:var(--s-out)"></i>Costs</span></span></div>
       <div class="chart" role="img" aria-label="${esc('Last 12 months. ' + months.map((m) => `${shortMonth(m)}: income ${money(inc[m])}, costs ${money(out[m])}`).join('; '))}">
         <div class="axis">${[4, 3, 2, 1, 0].map((i) => `<span>${money(step * i, true)}</span>`).join('')}</div>
         <div class="plot">
@@ -495,13 +496,7 @@ function viewFinances(d) {
       </div>
       ${anyMoney ? '' : '<p class="muted" style="margin:10px 0 0;font-size:13px">No money recorded yet — bars appear as charges and bills come in.</p>'}
     </section>
-    <section class="card narrow rise" style="display:block" aria-labelledby="up-h"><div class="card-head">${H('up-h', 'clock', 'Coming up')}<span class="muted">Next 60 days</span></div>
-        ${d.upcoming.map((u) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px"><span class="when"><b>${new Date(u.on + 'T12:00:00').getDate()}</b>${new Date(u.on + 'T12:00:00').toLocaleDateString('en-US', { month: 'short' })}</span><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span style="font-size:14px;font-weight:500">${esc(u.name)}</span><span class="muted" style="font-size:12px">${u.type === 'domain' ? 'Domain renewal' : 'Bill'}${u.project_name ? ' · ' + esc(u.project_name) : ''}</span></span><b class="num" style="font-size:14px">${money(u.cents)}</b></div>`).join('') || '<p class="muted" style="margin:6px 0 0;font-size:14px">Nothing due soon.</p>'}
-      </section>
-  </div>
-
-  <div class="split" style="margin-top:16px">
-    <section class="card wide rise" style="padding:0;overflow:hidden" aria-labelledby="led-h">
+    <section class="card rise" style="padding:0;overflow:hidden" aria-labelledby="led-h">
       <div class="led-head"><div class="card-head" style="margin:0">${H('led-h', 'receipt', 'Ledger')}<span class="muted">Tap an entry to edit</span></div>
         <div class="led-filters">
           <div class="seg" role="group" aria-label="Show">${[['all', 'All'], ['in', 'Income'], ['out', 'Costs']].map(([k, l]) => `<button class="${F.kind === k ? 'on' : ''}" aria-pressed="${F.kind === k}" data-act="fin-kind" data-v="${k}">${l}</button>`).join('')}</div>
@@ -511,7 +506,11 @@ function viewFinances(d) {
       <div class="led-list">${d.rows.map(ledgerRow).join('') || `<p class="muted" style="padding:20px;margin:0;font-size:14px;text-align:center">${F.q || d.site || F.kind !== 'all' ? 'No entries match.' : 'No entries yet.'}</p>`}</div>
       ${d.more ? '<div style="padding:12px 20px;border-top:1px solid var(--border)"><button class="btn small" data-act="fin-more">Show more</button></div>' : ''}
     </section>
+    </div>
     <aside class="narrow">
+      <section class="card rise" aria-labelledby="up-h"><div class="card-head">${H('up-h', 'clock', 'Coming up')}<span class="muted">Next 60 days</span></div>
+        ${d.upcoming.map((u) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px"><span class="when"><b>${new Date(u.on + 'T12:00:00').getDate()}</b>${new Date(u.on + 'T12:00:00').toLocaleDateString('en-US', { month: 'short' })}</span><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span style="font-size:14px;font-weight:500">${esc(u.name)}</span><span class="muted" style="font-size:12px">${u.type === 'domain' ? 'Domain renewal' : 'Bill'}${u.project_name ? ' · ' + esc(u.project_name) : ''}</span></span><b class="num" style="font-size:14px">${money(u.cents)}</b></div>`).join('') || '<p class="muted" style="margin:6px 0 0;font-size:14px">Nothing due soon.</p>'}
+      </section>
       
       <section class="card" aria-labelledby="rec-h"><div class="card-head">${H('rec-h', 'refresh-cw', 'Monthly bills')}<button class="btn small" data-act="add-recurring">+ Add</button></div>
         <p class="muted" style="margin:0 0 6px;font-size:13px">${d.recurring.length ? `About ${money(d.recurring.filter((r) => r.active).reduce((a, r) => a + (r.cadence === 'yearly' ? r.amount_cents / 12 : r.amount_cents), 0))} a month. Each one is added to the ledger on its date.` : 'Add a bill once; it’s logged to the ledger automatically every time it’s due.'}</p>

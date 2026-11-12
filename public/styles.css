@@ -610,3 +610,6 @@ button.site-row.on { background: color-mix(in srgb, var(--accent) 8%, transparen
 .legend { white-space: nowrap; flex: none; }
 .card-head { flex-wrap: wrap; }
 .meter.share span { background: var(--s-out); }
+.split > .col { display: flex; flex-direction: column; gap: 16px; }
+@media (max-width: 860px) { .split > .col { gap: 12px; } .split > .narrow { gap: 12px; } }
+.fin-cols .narrow .row > span[style*="flex:1"] > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
