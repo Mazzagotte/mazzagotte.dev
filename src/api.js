@@ -83,10 +83,18 @@ function monthRange(date) {
   return [start, addDays(next, -1)];
 }
 
-async function moneySummary(env, from, to) {
+// Limit a ledger/bill query to one site ('_' = shared costs with no site), or none for every site.
+function siteWhere(site, col = 'project_id') {
+  if (!site) return { sql: '', vals: [] };
+  if (site === '_') return { sql: ` AND ${col} IS NULL`, vals: [] };
+  return { sql: ` AND ${col} = ?`, vals: [site] };
+}
+
+async function moneySummary(env, from, to, site = '') {
+  const w = siteWhere(site);
   const { results } = await env.DB.prepare(
-    'SELECT kind, SUM(amount_cents) AS cents FROM ledger WHERE occurred_on BETWEEN ? AND ? GROUP BY kind'
-  ).bind(from, to).all();
+    `SELECT kind, SUM(amount_cents) AS cents FROM ledger WHERE occurred_on BETWEEN ? AND ?${w.sql} GROUP BY kind`
+  ).bind(from, to, ...w.vals).all();
   const t = { income: 0, cost: 0, fee: 0, refund: 0 };
   for (const r of results) t[r.kind] = r.cents || 0;
   return { income: t.income, costs: t.cost + t.fee + t.refund, net: t.income - t.cost - t.fee - t.refund, ...t };
@@ -327,7 +335,11 @@ async function finances(env, url) {
   // Same stretch last time, up to the same day, so the comparison is fair mid-month.
   const prevFrom = period === 'year' ? addMonths(from, -12) : addMonths(from, -1);
   const prevTo = period === 'year' ? addMonths(today, -12) : addMonths(today, -1);
-  const [totals, prev] = await Promise.all([moneySummary(env, from, to), moneySummary(env, prevFrom, prevTo)]);
+  const projects = await allProjects(env);
+  const sp = String(url.searchParams.get('site') || '');
+  const site = sp === '_' || projects.some((p) => p.id === sp) ? sp : '';
+  const sw = siteWhere(site, 'l.project_id');
+  const [totals, prev] = await Promise.all([moneySummary(env, from, to, site), moneySummary(env, prevFrom, prevTo, site)]);
 
   const tCount = async (a, b2) => (await env.DB.prepare(
     "SELECT COUNT(*) AS n FROM ledger WHERE kind = 'income' AND project_id = 'tc' AND occurred_on BETWEEN ? AND ?"
@@ -335,22 +347,25 @@ async function finances(env, url) {
   const [monthFrom, monthTo] = monthRange(today);
   const [tournaments, tournamentsPrev, tournamentsMonth] = await Promise.all([tCount(from, to), tCount(prevFrom, prevTo), tCount(monthFrom, monthTo)]);
 
-  const { results: byProject } = await env.DB.prepare(
-    `SELECT l.project_id, p.name, p.color, l.kind, SUM(l.amount_cents) AS cents
-       FROM ledger l LEFT JOIN projects p ON p.id = l.project_id
-      WHERE l.occurred_on BETWEEN ? AND ? GROUP BY l.project_id, l.kind`
+  // Every site, even ones with nothing recorded, plus shared costs.
+  const { results: sums } = await env.DB.prepare(
+    `SELECT project_id, kind, SUM(amount_cents) AS cents FROM ledger WHERE occurred_on BETWEEN ? AND ? GROUP BY project_id, kind`
   ).bind(from, to).all();
+  const site0 = (id, name, color) => ({ project_id: id, name, color, income: 0, costs: 0, bills_monthly: 0 });
+  const bySite = Object.fromEntries(projects.map((p) => [p.id, site0(p.id, p.name, p.color)]));
+  bySite._ = site0(null, 'Shared costs', '#71717A');
+  for (const r of sums) { const b = bySite[r.project_id || '_']; if (!b) continue; if (r.kind === 'income') b.income += r.cents; else b.costs += r.cents; }
   const { results: history } = await env.DB.prepare(
-    `SELECT substr(occurred_on, 1, 7) AS month, kind, SUM(amount_cents) AS cents FROM ledger
-      WHERE occurred_on >= ? GROUP BY month, kind ORDER BY month`
-  ).bind(addMonths(monthFrom, -11)).all();
+    `SELECT substr(l.occurred_on, 1, 7) AS month, l.kind, SUM(l.amount_cents) AS cents FROM ledger l
+      WHERE l.occurred_on >= ?${sw.sql} GROUP BY month, l.kind ORDER BY month`
+  ).bind(addMonths(monthFrom, -11), ...sw.vals).all();
 
   // Ledger with filters: kind=in|out, project, q, limit.
   const where = []; const vals = [];
   const k = url.searchParams.get('kind');
   if (k === 'in') where.push("l.kind = 'income'");
   if (k === 'out') where.push("l.kind != 'income'");
-  const fp = url.searchParams.get('project');
+  const fp = site || url.searchParams.get('project');
   if (fp === '_') where.push('l.project_id IS NULL'); else if (fp) { where.push('l.project_id = ?'); vals.push(fp); }
   const q = String(url.searchParams.get('q') || '').trim().slice(0, 80);
   if (q) { where.push("l.description LIKE ? ESCAPE '\\'"); vals.push('%' + q.replace(/[%_\\]/g, (c) => '\\' + c) + '%'); }
@@ -362,16 +377,21 @@ async function finances(env, url) {
   ).bind(...vals, limit + 1).all();
   const more = rows.length > limit;
 
-  const { results: renewals } = await env.DB.prepare(
+  const { results: allRenewals } = await env.DB.prepare(
     `SELECT r.*, p.name AS project_name, p.color FROM renewals r LEFT JOIN projects p ON p.id = r.project_id ORDER BY r.renews_on`
   ).all();
-  const { results: recurring } = await env.DB.prepare(
+  const { results: allRecurring } = await env.DB.prepare(
     `SELECT r.*, p.name AS project_name, p.color FROM recurring r LEFT JOIN projects p ON p.id = r.project_id ORDER BY r.active DESC, r.next_on`
   ).all();
-
-  // Fixed monthly costs = active bills + domains spread over the year.
+  const mine = (r) => !site || (site === '_' ? !r.project_id : r.project_id === site);
+  const renewals = allRenewals.filter(mine);
+  const recurring = allRecurring.filter(mine);
+  // Monthly running cost of each site: active bills + domains spread over the year.
+  for (const r of allRecurring) if (r.active) (bySite[r.project_id || '_'] || bySite._).bills_monthly += monthlyOf(r);
+  for (const r of allRenewals) (bySite[r.project_id || '_'] || bySite._).bills_monthly += Math.round(r.price_cents / 12);
   const fixed = recurring.filter((r) => r.active).reduce((a, r) => a + monthlyOf(r), 0)
     + renewals.reduce((a, r) => a + Math.round(r.price_cents / 12), 0);
+  const fixedAll = Object.values(bySite).reduce((a, b2) => a + b2.bills_monthly, 0);
   const breakEven = fixed ? Math.ceil(fixed / NET_PER_TOURNAMENT) : 0;
 
   const horizon = addDays(today, 60);
@@ -381,9 +401,9 @@ async function finances(env, url) {
   ].sort((a, b2) => a.on.localeCompare(b2.on));
 
   return {
-    period, from, to, today, totals, prev, tournaments, tournaments_prev: tournamentsPrev, tournaments_month: tournamentsMonth,
-    fixed_monthly: fixed, break_even: breakEven, net_per_tournament: NET_PER_TOURNAMENT,
-    by_project: byProject, history, rows: rows.slice(0, limit), more, renewals, recurring, upcoming, projects: await allProjects(env),
+    period, from, to, today, site, totals, prev, tournaments, tournaments_prev: tournamentsPrev, tournaments_month: tournamentsMonth,
+    fixed_monthly: fixed, fixed_all: fixedAll, break_even: breakEven, net_per_tournament: NET_PER_TOURNAMENT,
+    by_site: Object.values(bySite), history, rows: rows.slice(0, limit), more, renewals, recurring, upcoming, projects,
   };
 }
 

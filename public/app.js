@@ -12,7 +12,7 @@ const S = {
   tab: 'notes',
   kind: 'note',
   period: 'month',
-  fin: { kind: 'all', project: '', q: '', limit: 50 },
+  fin: { kind: 'all', site: '', q: '', limit: 50 },
   palette: null, // { mode: 'search' | 'note', q, sel, project, kindForNote }
   data: null,
   undo: null,
@@ -116,6 +116,7 @@ function route() {
   const h = location.hash.replace(/^#\/?/, '');
   const [view, id] = h.split('/');
   if (view === 'p' && id) return { view: 'project', id };
+  if (view === 'finances' && id) return { view: 'finances', id };
   if (['projects', 'monitoring', 'finances'].includes(view)) return { view };
   return { view: 'dashboard' };
 }
@@ -131,7 +132,7 @@ async function render({ quiet } = {}) {
     if (r.view === 'dashboard') S.data = await api('/dashboard');
     else if (r.view === 'project') S.data = await api('/projects/' + encodeURIComponent(r.id));
     else if (r.view === 'monitoring') S.data = await api('/monitoring');
-    else if (r.view === 'finances') S.data = await api('/finances?' + new URLSearchParams({ period: S.period, kind: S.fin.kind === 'all' ? '' : S.fin.kind, project: S.fin.project, q: S.fin.q, limit: S.fin.limit }));
+    else if (r.view === 'finances') S.fin.site = r.id || '', S.data = await api('/finances?' + new URLSearchParams({ period: S.period, kind: S.fin.kind === 'all' ? '' : S.fin.kind, site: S.fin.site, q: S.fin.q, limit: S.fin.limit }));
     else S.data = await api('/dashboard');
   } catch (e) {
     app.innerHTML = shell(r, `<div class="page"><div class="empty big"><b>Couldn't load this page</b><span>${esc(e.message)}</span><button class="btn" data-act="reload">Try again</button></div></div>`, 'Error');
@@ -420,15 +421,11 @@ function viewFinances(d) {
   const scale = step * 4;
   const anyMoney = months.some((m) => inc[m] || out[m]);
 
-  // Per site.
-  const byP = {};
-  for (const r of d.by_project) {
-    const k = r.project_id || '_';
-    byP[k] ||= { name: r.name || 'Shared', color: r.color || '#71717A', income: 0, costs: 0 };
-    if (r.kind === 'income') byP[k].income += r.cents; else byP[k].costs += r.cents;
-  }
-  const prows = Object.values(byP).sort((a, b) => (b.income - b.costs) - (a.income - a.costs));
+  // Every site, busiest first.
+  const prows = d.by_site.slice().sort((a, b) => (b.income + b.costs + b.bills_monthly) - (a.income + a.costs + a.bills_monthly));
   const pmax = Math.max(1, ...prows.map((r) => Math.max(r.income, r.costs)));
+  const siteName = d.site === '_' ? 'Shared costs' : d.site ? (d.projects.find((p) => p.id === d.site) || {}).name : '';
+  const scope = siteName ? siteName : 'all sites';
 
   // Break-even.
   const be = d.break_even;
@@ -447,28 +444,45 @@ function viewFinances(d) {
   };
 
   const html = `<div class="page">
-  <div class="page-head rise"><div><h1 class="d-only">Finances</h1><p>What each site earns and costs. Tournament Central charges are added automatically.</p></div>
+  <div class="page-head rise"><div>${d.site ? `<a href="#/finances" class="back">${L('arrow-right', 14, 'flip')}All finances</a>` : ''}<h1 class="${d.site ? '' : 'd-only'}">${d.site ? esc(siteName) : 'Finances'}</h1><p>${d.site ? (d.site === '_' ? 'Costs that aren’t tied to one site, like your workspace and tools.' : `Money in and out for ${esc(siteName)}.`) : 'Every site at a glance. Stripe charges and monthly bills are added automatically.'}</p></div>
     <div class="row" style="gap:10px;flex-wrap:wrap"><div class="seg" role="group" aria-label="Period"><button class="${d.period === 'month' ? 'on' : ''}" aria-pressed="${d.period === 'month'}" data-act="period" data-v="month">Month</button><button class="${d.period === 'year' ? 'on' : ''}" aria-pressed="${d.period === 'year'}" data-act="period" data-v="year">Year</button></div>
     <a class="btn exp" href="/api/ledger.csv" download aria-label="Export CSV">${L('download', 15)}<span>Export CSV</span></a><button class="btn primary grow-m" data-act="add-entry">${ICON.plus}Add entry</button></div></div>
+  <div class="hscroll site-pick rise" role="group" aria-label="Show finances for">
+    <a class="filter${!d.site ? ' on' : ''}" ${!d.site ? 'aria-current="page"' : ''} href="#/finances">${L('layout-dashboard', 14)}Overview</a>
+    ${d.projects.map((p) => `<a class="filter${d.site === p.id ? ' on' : ''}" ${d.site === p.id ? 'aria-current="page"' : ''} href="#/finances/${esc(p.id)}"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(p.color)}"></span>${esc(p.name)}</a>`).join('')}
+    <a class="filter${d.site === '_' ? ' on' : ''}" ${d.site === '_' ? 'aria-current="page"' : ''} href="#/finances/_">Shared costs</a>
+  </div>
   ${S.showForm === 'entry' ? entryForm(null, d, projOpts) : ''}
   <div class="kpis rise">
     <div class="kpi"><p class="l">${L('trending-up', 14)}Income ${per}</p><p class="v">${money(t.income)}</p>${delta(t.income, d.prev.income)}</div>
     <div class="kpi"><p class="l">${L('trending-down', 14)}Costs ${per}</p><p class="v">${money(t.costs)}</p>${delta(t.costs, d.prev.costs, { goodUp: false })}</div>
     <div class="kpi"><p class="l">${L('scale', 14)}Net ${per}</p><p class="v ${t.net < 0 ? 'neg' : ''}">${money(t.net)}</p><span class="delta flat">${t.net >= 0 ? 'Income covers costs' : 'Costs are higher than income'}</span></div>
-    <div class="kpi"><p class="l">${L('list-todo', 14)}Tournaments</p><p class="v">${d.tournaments}</p>${delta(d.tournaments, d.tournaments_prev)}</div>
+    <div class="kpi"><p class="l">${L('calendar-clock', 14)}Running costs</p><p class="v">${money(d.fixed_monthly)}<small>/mo</small></p><span class="delta flat">Bills + domains · ${esc(scope)}</span></div>
   </div>
 
-  <section class="card be rise" aria-labelledby="be-h" style="margin-top:16px">
-    <div class="card-head">${H('be-h', 'target', 'Break-even')}<span class="muted">${money(d.net_per_tournament)} kept per $5 tournament after Stripe</span></div>
+  ${d.site && d.site !== 'tc' ? `<section class="card be rise" aria-labelledby="be-h" style="margin-top:16px">
+    <div class="card-head">${H('be-h', 'target', 'Cost to run')}<span class="muted">${d.totals.income ? '' : `${esc(siteName)} doesn’t take payments — Tournament Central’s income covers it`}</span></div>
+    ${d.fixed_monthly ? `<div class="be-row"><div><p class="be-big"><b>${money(d.fixed_monthly)}</b> a month</p>
+      <p class="muted" style="margin:2px 0 0;font-size:14px">About ${Math.ceil(d.fixed_monthly / d.net_per_tournament)} Tournament Central listing${Math.ceil(d.fixed_monthly / d.net_per_tournament) === 1 ? '' : 's'} a month pay for it · ${Math.round((d.fixed_monthly / Math.max(1, d.fixed_all)) * 100)}% of everything you spend.</p></div></div>
+      <div class="meter share" role="img" aria-label="Share of all running costs"><span style="width:${Math.min(100, (d.fixed_monthly / Math.max(1, d.fixed_all)) * 100).toFixed(1)}%"></span></div>`
+    : `<div class="empty">${L('calendar-clock', 28)}<span>No bills or domains added for ${esc(scope)} yet. Add them below to see what it costs to run.</span></div>`}
+  </section>` : `<section class="card be rise" aria-labelledby="be-h" style="margin-top:16px">
+    <div class="card-head">${H('be-h', 'target', d.site ? 'Break-even · Tournament Central on its own' : 'Break-even · all sites')}<span class="muted">${money(d.net_per_tournament)} kept per $5 listing after Stripe</span></div>
     ${be ? `<div class="be-row"><div><p class="be-big"><b>${d.tournaments_month}</b> of <b>${be}</b> tournaments this month</p>
-      <p class="muted" style="margin:2px 0 0;font-size:14px">${left ? `${left} more to cover ${money(d.fixed_monthly)} in monthly costs.` : `Covered — every tournament from here is profit.`}</p></div>
+      <p class="muted" style="margin:2px 0 0;font-size:14px">${left ? `${left} more to cover ${money(d.fixed_monthly)} a month in running costs${d.site ? ' for Tournament Central' : ' across every site'}.` : `Covered — every tournament from here is profit.`}</p></div>
       <span class="pill ${left ? 'progress' : 'live'}">${left ? `${prog}%` : 'Covered'}</span></div>
       <div class="meter" role="progressbar" aria-valuemin="0" aria-valuemax="${be}" aria-valuenow="${d.tournaments_month}" aria-label="Tournaments toward break-even"><span style="width:${prog}%"></span></div>`
-    : `<div class="empty">${L('calendar-clock', 28)}<span>Add your monthly bills below (Railway, Cloudflare, domains…) and this will show how many $5 tournaments a month cover them.</span></div>`}
-  </section>
+    : `<div class="empty">${L('calendar-clock', 28)}<span>Add your monthly bills (Railway, Cloudflare, domains…) and this shows how many $5 tournaments a month cover ${d.site ? 'Tournament Central' : 'every site'}.</span></div>`}
+  </section>`}
 
+  ${d.site ? '' : `<section class="rise" aria-labelledby="sites-h" style="margin-top:28px"><div class="row" style="justify-content:space-between;margin-bottom:12px"><h2 id="sites-h" class="ih" style="margin:0;font-size:18px;font-weight:600">${L('globe', 18)}Sites · ${per}</h2><span class="muted" style="font-size:13px">Open a site for its own page</span></div>
+    <div class="site-grid">${prows.map((r) => { const key = r.project_id || '_'; const net = r.income - r.costs; return `<a class="card stripe site-card" style="--c:${esc(r.color)}" href="#/finances/${esc(key)}">
+      <span class="row" style="gap:10px">${r.project_id ? tile(d.projects.find((p) => p.id === r.project_id) || { color: r.color, initials: '?' }, 'sm') : `<span class="tile sm ic">${L('wallet', 13)}</span>`}<b style="flex:1;min-width:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</b>${L('chevron-right', 16, 'muted')}</span>
+      <span class="site-net ${net < 0 ? 'neg' : net > 0 ? 'pos' : ''}">${money(net)}<small>net</small></span>
+      ${r.income || r.costs ? `<span class="minibars"><span class="in" style="width:${((r.income / pmax) * 100).toFixed(1)}%"></span><span class="out" style="width:${((r.costs / pmax) * 100).toFixed(1)}%"></span></span>` : ''}
+      <span class="muted" style="font-size:12px">${money(r.income)} in · ${money(r.costs)} out${r.bills_monthly ? ` · runs ${money(r.bills_monthly)}/mo` : ''}</span></a>`; }).join('')}</div></section>`}
   <div class="split" style="margin-top:16px">
-    <section class="card wide rise" aria-labelledby="inc-h"><div class="card-head">${H('inc-h', 'chart-column', 'Income and costs')}<span class="legend"><span><i style="background:var(--s-in)"></i>Income</span><span><i style="background:var(--s-out)"></i>Costs</span></span></div>
+    <section class="card wide rise" aria-labelledby="inc-h"><div class="card-head">${H('inc-h', 'chart-column', `Income and costs · ${esc(scope)}`)}<span class="legend"><span><i style="background:var(--s-in)"></i>Income</span><span><i style="background:var(--s-out)"></i>Costs</span></span></div>
       <div class="chart" role="img" aria-label="${esc('Last 12 months. ' + months.map((m) => `${shortMonth(m)}: income ${money(inc[m])}, costs ${money(out[m])}`).join('; '))}">
         <div class="axis">${[4, 3, 2, 1, 0].map((i) => `<span>${money(step * i, true)}</span>`).join('')}</div>
         <div class="plot">
@@ -481,11 +495,9 @@ function viewFinances(d) {
       </div>
       ${anyMoney ? '' : '<p class="muted" style="margin:10px 0 0;font-size:13px">No money recorded yet — bars appear as charges and bills come in.</p>'}
     </section>
-    <section class="card narrow rise" aria-labelledby="bp-h" style="display:block"><h2 id="bp-h" class="ih" style="margin-bottom:6px">${L('globe', 16)}By site · ${per}</h2>
-      ${prows.map((r) => `<div class="site-row"><div class="row" style="gap:8px"><span class="dot" style="background:${esc(r.color)}"></span><span style="flex:1;font-size:14px;font-weight:500">${esc(r.name)}</span><b class="num" style="font-size:14px;${r.income - r.costs < 0 ? 'color:var(--bad)' : ''}">${money(r.income - r.costs)}</b></div>
-        <div class="minibars"><span class="in" style="width:${((r.income / pmax) * 100).toFixed(1)}%"></span><span class="out" style="width:${((r.costs / pmax) * 100).toFixed(1)}%"></span></div>
-        <p class="muted" style="margin:0;font-size:12px">${money(r.income)} in · ${money(r.costs)} out</p></div>`).join('') || '<p class="muted" style="margin:0;font-size:14px">Nothing recorded yet.</p>'}
-    </section>
+    <section class="card narrow rise" style="display:block" aria-labelledby="up-h"><div class="card-head">${H('up-h', 'clock', 'Coming up')}<span class="muted">Next 60 days</span></div>
+        ${d.upcoming.map((u) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px"><span class="when"><b>${new Date(u.on + 'T12:00:00').getDate()}</b>${new Date(u.on + 'T12:00:00').toLocaleDateString('en-US', { month: 'short' })}</span><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span style="font-size:14px;font-weight:500">${esc(u.name)}</span><span class="muted" style="font-size:12px">${u.type === 'domain' ? 'Domain renewal' : 'Bill'}${u.project_name ? ' · ' + esc(u.project_name) : ''}</span></span><b class="num" style="font-size:14px">${money(u.cents)}</b></div>`).join('') || '<p class="muted" style="margin:6px 0 0;font-size:14px">Nothing due soon.</p>'}
+      </section>
   </div>
 
   <div class="split" style="margin-top:16px">
@@ -493,19 +505,17 @@ function viewFinances(d) {
       <div class="led-head"><div class="card-head" style="margin:0">${H('led-h', 'receipt', 'Ledger')}<span class="muted">Tap an entry to edit</span></div>
         <div class="led-filters">
           <div class="seg" role="group" aria-label="Show">${[['all', 'All'], ['in', 'Income'], ['out', 'Costs']].map(([k, l]) => `<button class="${F.kind === k ? 'on' : ''}" aria-pressed="${F.kind === k}" data-act="fin-kind" data-v="${k}">${l}</button>`).join('')}</div>
-          <label class="sr" for="fin-site">Site</label><select id="fin-site" class="input sm" data-act="fin-project"><option value="">All sites</option><option value="_"${F.project === '_' ? ' selected' : ''}>Shared</option>${d.projects.map((p) => `<option value="${esc(p.id)}"${F.project === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+          
           <label class="search-in">${L('search', 15)}<span class="sr">Search the ledger</span><input class="input sm" id="fin-q" type="search" placeholder="Search…" value="${esc(F.q)}" autocomplete="off"></label>
         </div></div>
-      <div class="led-list">${d.rows.map(ledgerRow).join('') || `<p class="muted" style="padding:20px;margin:0;font-size:14px;text-align:center">${F.q || F.project || F.kind !== 'all' ? 'No entries match.' : 'No entries yet.'}</p>`}</div>
+      <div class="led-list">${d.rows.map(ledgerRow).join('') || `<p class="muted" style="padding:20px;margin:0;font-size:14px;text-align:center">${F.q || d.site || F.kind !== 'all' ? 'No entries match.' : 'No entries yet.'}</p>`}</div>
       ${d.more ? '<div style="padding:12px 20px;border-top:1px solid var(--border)"><button class="btn small" data-act="fin-more">Show more</button></div>' : ''}
     </section>
     <aside class="narrow">
-      <section class="card" aria-labelledby="up-h"><div class="card-head">${H('up-h', 'clock', 'Coming up')}<span class="muted">Next 60 days</span></div>
-        ${d.upcoming.map((u) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px"><span class="when"><b>${new Date(u.on + 'T12:00:00').getDate()}</b>${new Date(u.on + 'T12:00:00').toLocaleDateString('en-US', { month: 'short' })}</span><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span style="font-size:14px;font-weight:500">${esc(u.name)}</span><span class="muted" style="font-size:12px">${u.type === 'domain' ? 'Domain renewal' : 'Bill'}${u.project_name ? ' · ' + esc(u.project_name) : ''}</span></span><b class="num" style="font-size:14px">${money(u.cents)}</b></div>`).join('') || '<p class="muted" style="margin:6px 0 0;font-size:14px">Nothing due soon.</p>'}
-      </section>
+      
       <section class="card" aria-labelledby="rec-h"><div class="card-head">${H('rec-h', 'refresh-cw', 'Monthly bills')}<button class="btn small" data-act="add-recurring">+ Add</button></div>
         <p class="muted" style="margin:0 0 6px;font-size:13px">${d.recurring.length ? `About ${money(d.recurring.filter((r) => r.active).reduce((a, r) => a + (r.cadence === 'yearly' ? r.amount_cents / 12 : r.amount_cents), 0))} a month. Each one is added to the ledger on its date.` : 'Add a bill once; it’s logged to the ledger automatically every time it’s due.'}</p>
-        ${S.showForm === 'recurring' ? `<form data-form="recurring" style="display:flex;flex-direction:column;gap:10px;margin:10px 0"><label class="field"><span>What is it?</span><input class="input" name="name" required maxlength="80" placeholder="Railway — Hobby plan"></label><div class="form-row"><label class="field"><span>Amount (USD)</span><input class="input" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="5.00"></label><label class="field"><span>Every</span><select class="input" name="cadence"><option value="monthly">Month</option><option value="yearly">Year</option></select></label></div><div class="form-row"><label class="field"><span>Next charge</span><input class="input" type="date" name="next_on" required value="${esc(d.today)}"></label><label class="field"><span>Site</span><select class="input" name="project_id">${projOpts('')}</select></label></div><div class="row" style="justify-content:flex-end;gap:8px"><button type="button" class="btn small" data-act="cancel-form">Cancel</button><button class="btn small primary">Save bill</button></div></form>` : ''}
+        ${S.showForm === 'recurring' ? `<form data-form="recurring" style="display:flex;flex-direction:column;gap:10px;margin:10px 0"><label class="field"><span>What is it?</span><input class="input" name="name" required maxlength="80" placeholder="Railway — Hobby plan"></label><div class="form-row"><label class="field"><span>Amount (USD)</span><input class="input" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="5.00"></label><label class="field"><span>Every</span><select class="input" name="cadence"><option value="monthly">Month</option><option value="yearly">Year</option></select></label></div><div class="form-row"><label class="field"><span>Next charge</span><input class="input" type="date" name="next_on" required value="${esc(d.today)}"></label><label class="field"><span>Site</span><select class="input" name="project_id">${projOpts(d.site && d.site !== '_' ? d.site : '')}</select></label></div><div class="row" style="justify-content:flex-end;gap:8px"><button type="button" class="btn small" data-act="cancel-form">Cancel</button><button class="btn small primary">Save bill</button></div></form>` : ''}
         ${d.recurring.map((r) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px;${r.active ? '' : 'opacity:.55'}"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(r.color || '#71717A')}"></span><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span style="font-size:14px;font-weight:500">${esc(r.name)}</span><span class="muted" style="font-size:12px">${money(r.amount_cents)} / ${r.cadence === 'yearly' ? 'year' : 'month'} · ${r.active ? 'next ' + esc(dateLabel(r.next_on)) : 'paused'}</span></span><input type="checkbox" class="switch" role="switch" aria-label="${esc(r.name)} active" data-act="rec-on" data-id="${r.id}" ${r.active ? 'checked' : ''}><button class="icon-btn" data-act="del-recurring" data-id="${r.id}" aria-label="Delete ${esc(r.name)}">${ICON.trash}</button></div>`).join('')}
       </section>
       <section class="card" aria-labelledby="ren-h"><div class="card-head">${H('ren-h', 'globe', 'Domains')}<button class="btn small" data-act="add-renewal">+ Add</button></div>
@@ -519,7 +529,7 @@ function viewFinances(d) {
 }
 
 function entryForm(r, d, projOpts) {
-  const v = r || { kind: 'cost', description: '', amount_cents: '', occurred_on: d.today, project_id: '' };
+  const v = r || { kind: 'cost', description: '', amount_cents: '', occurred_on: d.today, project_id: d.site && d.site !== '_' ? d.site : '' };
   const locked = r && r.source === 'stripe';
   return `<form class="card rise" data-form="entry" data-id="${r ? r.id : ''}" style="margin-bottom:16px;display:flex;flex-direction:column;gap:12px"><h2>${r ? 'Edit entry' : 'Add an entry'}</h2>
     ${locked ? '<p class="muted" style="margin:0;font-size:13px">This came from Stripe, so only its site can be changed.</p>' : ''}
@@ -700,6 +710,7 @@ document.addEventListener('click', async (e) => {
       case 'del-link': await api('/links/' + id, { method: 'DELETE' }); toast('Link removed'); render({ quiet: true }); break;
       case 'del-entry': await api('/ledger/' + id, { method: 'DELETE' }); closePalette(); S.showForm = null; toast('Entry deleted'); render({ quiet: true }); break;
       case 'edit-entry': { const r = S.data.rows.find((x) => x.id === Number(id)); if (r) editEntryDialog(r); break; }
+      case 'fin-site': S.fin.site = v || ''; S.fin.limit = 50; render({ quiet: true }); break;
       case 'fin-kind': S.fin.kind = v; S.fin.limit = 50; render({ quiet: true }); break;
       case 'fin-more': S.fin.limit += 100; render({ quiet: true }); break;
       case 'add-recurring': S.showForm = 'recurring'; render({ quiet: true }); break;
@@ -731,7 +742,6 @@ document.addEventListener('change', async (e) => {
       render({ quiet: true });
     }
     if (t.dataset.act === 'rec-on') { await api('/recurring/' + t.dataset.id, { method: 'PATCH', body: { active: t.checked } }); render({ quiet: true }); }
-    if (t.dataset.act === 'fin-project') { S.fin.project = t.value; S.fin.limit = 50; render({ quiet: true }); }
     if (t.dataset.act === 'check-on') {
       await api('/checks/' + t.dataset.id, { method: 'PATCH', body: { enabled: t.checked } });
       render({ quiet: true });
@@ -825,7 +835,7 @@ document.addEventListener('keydown', (e) => {
   if (k === 't') { e.preventDefault(); setTheme(!isDark()); render({ quiet: true }); }
 });
 
-window.addEventListener('hashchange', () => { S.showForm = null; S.editing = null; S.tab = 'notes'; closePalette(); render(); });
+window.addEventListener('hashchange', () => { S.showForm = null; S.editing = null; S.tab = 'notes'; S.fin.kind = 'all'; S.fin.q = ''; S.fin.limit = 50; closePalette(); render(); });
 
 // Live: refresh quietly every 30 seconds while the page is open, and as soon as you come back to it.
 const busy = () => S.palette || S.showForm || S.editing || document.hidden || document.activeElement.matches('input,textarea,select');

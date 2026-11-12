@@ -588,3 +588,25 @@ html.dark { --s-in: #3987e5; --s-out: #d95926; }
   .lrow2 .grow > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lrow2 .grow > span .dot { vertical-align: middle; }
 }
+.site-pick { margin: -8px 0 16px; padding: 2px; }
+.site-pick .filter { display: inline-flex; align-items: center; gap: 8px; }
+.kpi .v small { font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 2px; letter-spacing: 0; }
+button.site-row { width: 100%; border: 0; border-top: 1px solid var(--border); background: none; color: inherit; text-align: left; padding: 12px 8px; margin: 0 -8px; width: calc(100% + 16px); border-radius: 10px; align-items: stretch; }
+button.site-row:hover { background: var(--well); }
+button.site-row.on { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+@media (max-width: 860px) { .site-pick { margin: 0 -16px 14px; padding: 2px 16px; } }
+.back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--muted); }
+.back:hover { color: var(--text); }
+.lu.flip { transform: scaleX(-1); }
+.site-pick a.filter { display: inline-flex; align-items: center; gap: 8px; color: var(--body); }
+.site-pick a.filter.on { color: var(--on-fg); }
+.site-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.site-card { display: flex !important; flex-direction: column; gap: 10px; padding: 18px 18px 16px; color: var(--text); }
+.site-card:hover { color: var(--text); }
+.site-net { font-size: 24px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.site-net small { font-size: 12px; font-weight: 500; color: var(--muted); margin-left: 6px; letter-spacing: 0; }
+.site-net.pos { color: var(--good); } .site-net.neg { color: var(--bad); }
+@media (max-width: 860px) { .site-grid { grid-template-columns: 1fr 1fr; gap: 10px; } .site-card { padding: 14px; } .site-net { font-size: 20px; } }
+.legend { white-space: nowrap; flex: none; }
+.card-head { flex-wrap: wrap; }
+.meter.share span { background: var(--s-out); }
