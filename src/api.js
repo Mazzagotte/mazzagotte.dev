@@ -309,9 +309,26 @@ function addMonths(date, n) {
 }
 const monthlyOf = (r) => (r.cadence === 'yearly' ? Math.round(r.amount_cents / 12) : r.amount_cents);
 
-// Post every recurring bill that has come due (catching up if a few were missed), once each.
+// Log one domain renewal as a cost on its site and move it to next year.
+async function renewDomain(env, r, on) {
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO ledger (project_id, kind, source, description, amount_cents, occurred_on, external_id, created_at)
+     VALUES (?, 'cost', 'domain', ?, ?, ?, ?, ?)`
+  ).bind(r.project_id, `Domain renewal — ${r.domain}`, r.price_cents, on, `dom:${r.id}:${r.renews_on}`, Date.now()).run();
+  await env.DB.prepare('UPDATE renewals SET renews_on = ? WHERE id = ?').bind(addMonths(r.renews_on, 12), r.id).run();
+}
+
+// Post every recurring bill and auto-renewing domain that has come due (catching up if a few were missed), once each.
 export async function postRecurring(env) {
   const today = todayLocal(tzOf(env));
+  const { results: due } = await env.DB.prepare('SELECT * FROM renewals WHERE auto = 1 AND renews_on <= ?').bind(today).all();
+  for (const r0 of due) {
+    let r = r0;
+    for (let i = 0; i < 5 && r.renews_on <= today; i++) {
+      await renewDomain(env, r, r.renews_on);
+      r = { ...r, renews_on: addMonths(r.renews_on, 12) };
+    }
+  }
   const { results } = await env.DB.prepare('SELECT * FROM recurring WHERE active = 1 AND next_on <= ?').bind(today).all();
   for (const r of results) {
     let on = r.next_on;
@@ -453,6 +470,7 @@ async function createRecurring(env, b) {
 }
 
 async function domains(env) {
+  await postRecurring(env);
   const today = todayLocal(tzOf(env));
   const { results } = await env.DB.prepare(
     `SELECT r.*, p.name AS project_name, p.color, p.initials, p.ink FROM renewals r LEFT JOIN projects p ON p.id = r.project_id ORDER BY r.renews_on, r.domain`
@@ -567,6 +585,12 @@ export async function handleApi(request, env, ctx) {
   }
   if (method === 'POST' && path === '/renewals') return json(await createRenewal(env, await readJson(request)), 201);
   if (method === 'GET' && path === '/domains') return json(await domains(env));
+  if ((m = path.match(/^\/renewals\/(\d+)\/renewed$/)) && method === 'POST') {
+    const r = await env.DB.prepare('SELECT * FROM renewals WHERE id = ?').bind(Number(m[1])).first();
+    if (!r) throw new HttpError(404, 'No such domain');
+    await renewDomain(env, r, todayLocal(tzOf(env)));
+    return json(await env.DB.prepare('SELECT * FROM renewals WHERE id = ?').bind(r.id).first());
+  }
   if ((m = path.match(/^\/renewals\/(\d+)$/))) {
     if (method === 'PATCH') return json(await updateRenewal(env, Number(m[1]), await readJson(request)));
     if (method === 'DELETE') {

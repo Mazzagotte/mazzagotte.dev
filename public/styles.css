@@ -629,3 +629,10 @@ button.site-row.on { background: color-mix(in srgb, var(--accent) 8%, transparen
   .drow .dwhen { order: 3; } .drow .pill { order: 4; } .drow .damt { order: 5; margin-left: auto; min-width: 0; }
   .drow .chev { position: absolute; display: none; }
 }
+.sub-h { margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.sub-h a { text-transform: none; letter-spacing: 0; font-size: 12px; }
+.oc-row { padding: 9px 0; gap: 10px; }
+.oc-row + .oc-row { border-top: 1px solid var(--border); }
+.choice .lu { opacity: .8; }
+.drow .btn.small { min-height: 30px; }
+.fin-cols .narrow .oc-row > span[style*="flex:1"] > span:first-child { white-space: normal; overflow-wrap: anywhere; }

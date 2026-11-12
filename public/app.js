@@ -402,7 +402,14 @@ function viewMonitoring(d) {
 }
 
 // ---------- finances ----------
-const SRC = { stripe: ['Stripe', 'receipt'], recurring: ['Bill', 'calendar-clock'], manual: ['Manual', 'pencil'] };
+const SRC = { stripe: ['Stripe', 'receipt'], recurring: ['Bill', 'refresh-cw'], domain: ['Domain', 'globe'], manual: ['Manual', 'pencil'] };
+// Common bills to add in one tap; you fill in your own amount since it depends on your plan.
+const BILL_PRESETS = [
+  { name: 'Google Workspace', cadence: 'monthly', icon: 'at-sign' },
+  { name: 'Railway', cadence: 'monthly', icon: 'train-front' },
+  { name: 'Cloudflare Workers Paid', cadence: 'monthly', icon: 'cloud' },
+  { name: 'GitHub', cadence: 'monthly', icon: 'git-branch' },
+];
 const shortMonth = (m) => new Date(m + '-15T12:00:00Z').toLocaleDateString('en-US', { month: 'short' });
 function delta(now, before, { goodUp = true } = {}) {
   if (!before && !now) return '<span class="delta flat">No change</span>';
@@ -458,19 +465,19 @@ function viewFinances(d) {
     <div class="kpi"><p class="l">${L('trending-up', 14)}Income ${per}</p><p class="v">${money(t.income)}</p>${delta(t.income, d.prev.income)}</div>
     <div class="kpi"><p class="l">${L('trending-down', 14)}Costs ${per}</p><p class="v">${money(t.costs)}</p>${delta(t.costs, d.prev.costs, { goodUp: false })}</div>
     <div class="kpi"><p class="l">${L('scale', 14)}Net ${per}</p><p class="v ${t.net < 0 ? 'neg' : ''}">${money(t.net)}</p><span class="delta flat">${t.net >= 0 ? 'Income covers costs' : 'Costs are higher than income'}</span></div>
-    <div class="kpi"><p class="l">${L('calendar-clock', 14)}Running costs</p><p class="v">${money(d.fixed_monthly)}<small>/mo</small></p><span class="delta flat">Bills + domains · ${esc(scope)}</span></div>
+    <div class="kpi"><p class="l">${L('calendar-clock', 14)}Operating costs</p><p class="v">${money(d.fixed_monthly)}<small>/mo</small></p><span class="delta flat">A month · bills + domains · ${esc(scope)}</span></div>
   </div>
 
   ${d.site && d.site !== 'tc' ? `<section class="card be rise" aria-labelledby="be-h" style="margin-top:16px">
     <div class="card-head">${H('be-h', 'target', 'Cost to run')}<span class="muted">${d.totals.income ? '' : `${esc(siteName)} doesn’t take payments — Tournament Central’s income covers it`}</span></div>
     ${d.fixed_monthly ? `<div class="be-row"><div><p class="be-big"><b>${money(d.fixed_monthly)}</b> a month</p>
-      <p class="muted" style="margin:2px 0 0;font-size:14px">About ${Math.ceil(d.fixed_monthly / d.net_per_tournament)} Tournament Central listing${Math.ceil(d.fixed_monthly / d.net_per_tournament) === 1 ? '' : 's'} a month pay for it · ${Math.round((d.fixed_monthly / Math.max(1, d.fixed_all)) * 100)}% of everything you spend.</p></div></div>
+      <p class="muted" style="margin:2px 0 0;font-size:14px">About ${Math.ceil(d.fixed_monthly / d.net_per_tournament)} Tournament Central listing${Math.ceil(d.fixed_monthly / d.net_per_tournament) === 1 ? '' : 's'} a month pay for it · ${Math.round((d.fixed_monthly / Math.max(1, d.fixed_all)) * 100)}% of everything you spend to run your sites.</p></div></div>
       <div class="meter share" role="img" aria-label="Share of all running costs"><span style="width:${Math.min(100, (d.fixed_monthly / Math.max(1, d.fixed_all)) * 100).toFixed(1)}%"></span></div>`
     : `<div class="empty">${L('calendar-clock', 28)}<span>No bills or domains added for ${esc(scope)} yet. Add them below to see what it costs to run.</span></div>`}
   </section>` : `<section class="card be rise" aria-labelledby="be-h" style="margin-top:16px">
     <div class="card-head">${H('be-h', 'target', d.site ? 'Break-even · Tournament Central on its own' : 'Break-even · all sites')}<span class="muted">${money(d.net_per_tournament)} kept per $5 listing after Stripe</span></div>
     ${be ? `<div class="be-row"><div><p class="be-big"><b>${d.tournaments_month}</b> of <b>${be}</b> tournaments this month</p>
-      <p class="muted" style="margin:2px 0 0;font-size:14px">${left ? `${left} more to cover ${money(d.fixed_monthly)} a month in running costs${d.site ? ' for Tournament Central' : ' across every site'}.` : `Covered — every tournament from here is profit.`}</p></div>
+      <p class="muted" style="margin:2px 0 0;font-size:14px">${left ? `${left} more to cover ${money(d.fixed_monthly)} a month in operating costs${d.site ? ' for Tournament Central' : ' across every site'}.` : `Covered — every tournament from here is profit.`}</p></div>
       <span class="pill ${left ? 'progress' : 'live'}">${left ? `${prog}%` : 'Covered'}</span></div>
       <div class="meter" role="progressbar" aria-valuemin="0" aria-valuemax="${be}" aria-valuenow="${d.tournaments_month}" aria-label="Tournaments toward break-even"><span style="width:${prog}%"></span></div>`
     : `<div class="empty">${L('calendar-clock', 28)}<span>Add your monthly bills (Railway, Cloudflare, domains…) and this shows how many $5 tournaments a month cover ${d.site ? 'Tournament Central' : 'every site'}.</span></div>`}
@@ -481,7 +488,7 @@ function viewFinances(d) {
       <span class="row" style="gap:10px">${r.project_id ? tile(d.projects.find((p) => p.id === r.project_id) || { color: r.color, initials: '?' }, 'sm') : `<span class="tile sm ic">${L('wallet', 13)}</span>`}<b style="flex:1;min-width:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</b>${L('chevron-right', 16, 'muted')}</span>
       <span class="site-net ${net < 0 ? 'neg' : net > 0 ? 'pos' : ''}">${money(net)}<small>net</small></span>
       ${r.income || r.costs ? `<span class="minibars"><span class="in" style="width:${((r.income / pmax) * 100).toFixed(1)}%"></span><span class="out" style="width:${((r.costs / pmax) * 100).toFixed(1)}%"></span></span>` : ''}
-      <span class="muted" style="font-size:12px">${money(r.income)} in · ${money(r.costs)} out${r.bills_monthly ? ` · runs ${money(r.bills_monthly)}/mo` : ''}</span></a>`; }).join('')}</div></section>`}
+      <span class="muted" style="font-size:12px">${money(r.income)} in · ${money(r.costs)} out${r.bills_monthly ? ` · operates at ${money(r.bills_monthly)}/mo` : ''}</span></a>`; }).join('')}</div></section>`}
   <div class="split fin-cols" style="margin-top:16px">
     <div class="wide col">
     <section class="card rise" aria-labelledby="inc-h"><div class="card-head">${H('inc-h', 'chart-column', `Income and costs · ${esc(scope)}`)}<span class="legend"><span><i style="background:var(--s-in)"></i>Income</span><span><i style="background:var(--s-out)"></i>Costs</span></span></div>
@@ -513,10 +520,15 @@ function viewFinances(d) {
         ${d.upcoming.map((u) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px"><span class="when"><b>${new Date(u.on + 'T12:00:00').getDate()}</b>${new Date(u.on + 'T12:00:00').toLocaleDateString('en-US', { month: 'short' })}</span><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span style="font-size:14px;font-weight:500">${esc(u.name)}</span><span class="muted" style="font-size:12px">${u.type === 'domain' ? 'Domain renewal' : 'Bill'}${u.project_name ? ' · ' + esc(u.project_name) : ''}</span></span><b class="num" style="font-size:14px">${money(u.cents)}</b></div>`).join('') || '<p class="muted" style="margin:6px 0 0;font-size:14px">Nothing due soon.</p>'}
       </section>
       
-      <section class="card" aria-labelledby="rec-h"><div class="card-head">${H('rec-h', 'refresh-cw', 'Monthly bills')}<button class="btn small" data-act="add-recurring">+ Add</button></div>
-        <p class="muted" style="margin:0 0 6px;font-size:13px">${d.recurring.length ? `About ${money(d.recurring.filter((r) => r.active).reduce((a, r) => a + (r.cadence === 'yearly' ? r.amount_cents / 12 : r.amount_cents), 0))} a month. Each one is added to the ledger on its date.` : 'Add a bill once; it’s logged to the ledger automatically every time it’s due.'}</p>
-        ${S.showForm === 'recurring' ? `<form data-form="recurring" style="display:flex;flex-direction:column;gap:10px;margin:10px 0"><label class="field"><span>What is it?</span><input class="input" name="name" required maxlength="80" placeholder="Railway — Hobby plan"></label><div class="form-row"><label class="field"><span>Amount (USD)</span><input class="input" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="5.00"></label><label class="field"><span>Every</span><select class="input" name="cadence"><option value="monthly">Month</option><option value="yearly">Year</option></select></label></div><div class="form-row"><label class="field"><span>Next charge</span><input class="input" type="date" name="next_on" required value="${esc(d.today)}"></label><label class="field"><span>Site</span><select class="input" name="project_id">${projOpts(d.site && d.site !== '_' ? d.site : '')}</select></label></div><div class="row" style="justify-content:flex-end;gap:8px"><button type="button" class="btn small" data-act="cancel-form">Cancel</button><button class="btn small primary">Save bill</button></div></form>` : ''}
-        ${d.recurring.map((r) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px;${r.active ? '' : 'opacity:.55'}"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(r.color || '#71717A')}"></span><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span style="font-size:14px;font-weight:500">${esc(r.name)}</span><span class="muted" style="font-size:12px">${money(r.amount_cents)} / ${r.cadence === 'yearly' ? 'year' : 'month'} · ${r.active ? 'next ' + esc(dateLabel(r.next_on)) : 'paused'}</span></span><input type="checkbox" class="switch" role="switch" aria-label="${esc(r.name)} active" data-act="rec-on" data-id="${r.id}" ${r.active ? 'checked' : ''}><button class="icon-btn" data-act="del-recurring" data-id="${r.id}" aria-label="Delete ${esc(r.name)}">${ICON.trash}</button></div>`).join('')}
+      <section class="card" aria-labelledby="rec-h"><div class="card-head">${H('rec-h', 'refresh-cw', 'Operating costs')}<button class="btn small" data-act="add-recurring">+ Add bill</button></div>
+        <p class="muted" style="margin:0 0 8px;font-size:13px">${d.fixed_monthly ? `<b style="color:var(--text);font-size:15px">${money(d.fixed_monthly)}</b> a month for ${esc(scope)}. Bills and domain renewals are logged to the ledger on their dates.` : 'What it costs to keep things running. Add a bill once and it’s logged automatically every time it’s due; domains count too.'}</p>
+        ${S.showForm === 'recurring' ? `<form data-form="recurring" style="display:flex;flex-direction:column;gap:10px;margin:6px 0 10px">
+          <div class="choices" role="group" aria-label="Common bills">${BILL_PRESETS.map((p, i) => `<button type="button" class="choice" data-act="bill-preset" data-i="${i}">${L(p.icon, 13)}${esc(p.name)}</button>`).join('')}</div>
+          <label class="field"><span>What is it?</span><input class="input" name="name" required maxlength="80" placeholder="Railway — Hobby plan" value="${esc(S.billDraft?.name || '')}"></label><div class="form-row"><label class="field"><span>Amount (USD)</span><input class="input" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="5.00"></label><label class="field"><span>Every</span><select class="input" name="cadence"><option value="monthly">Month</option><option value="yearly"${S.billDraft?.cadence === 'yearly' ? ' selected' : ''}>Year</option></select></label></div><div class="form-row"><label class="field"><span>Next charge</span><input class="input" type="date" name="next_on" required value="${esc(d.today)}"></label><label class="field"><span>Site</span><select class="input" name="project_id">${projOpts(d.site && d.site !== '_' ? d.site : '', 'Shared / all sites')}</select></label></div><div class="row" style="justify-content:flex-end;gap:8px"><button type="button" class="btn small" data-act="cancel-form">Cancel</button><button class="btn small primary">Save bill</button></div></form>` : ''}
+        ${d.recurring.length ? `<p class="sub-h">Bills</p>` : ''}
+        ${d.recurring.map((r) => `<div class="row oc-row" style="${r.active ? '' : 'opacity:.55'}"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(r.color || '#71717A')}"></span><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span style="font-size:14px;font-weight:500">${esc(r.name)}</span><span class="muted" style="font-size:12px">${money(r.amount_cents)} / ${r.cadence === 'yearly' ? 'year' : 'month'} · ${r.active ? 'next ' + esc(dateLabel(r.next_on)) : 'paused'}${d.site ? '' : ` · ${esc(r.project_name || 'Shared')}`}</span></span><input type="checkbox" class="switch" role="switch" aria-label="${esc(r.name)} active" data-act="rec-on" data-id="${r.id}" ${r.active ? 'checked' : ''}><button class="icon-btn" data-act="del-recurring" data-id="${r.id}" aria-label="Delete ${esc(r.name)}">${ICON.trash}</button></div>`).join('')}
+        ${d.renewals.length ? `<p class="sub-h">Domains <a href="#/finances/domains" style="font-weight:500">Manage →</a></p>` : ''}
+        ${d.renewals.map((r) => `<div class="row oc-row"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(r.color || '#71717A')}"></span><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span class="mono" style="font-size:13px;font-weight:500">${esc(r.domain)}</span><span class="muted" style="font-size:12px">${money(r.price_cents)} / year · ≈ ${money(Math.round(r.price_cents / 12))}/mo · renews ${esc(dateLabel(r.renews_on))}</span></span></div>`).join('')}
       </section>
 
     </aside>
@@ -545,7 +557,7 @@ function viewDomains(d) {
   const next = d.domains.find((r) => days(r.renews_on) >= 0);
   const left = (r) => { const n = days(r.renews_on); return n < 0 ? `<span class="pill down">${-n} day${n === -1 ? '' : 's'} overdue</span>` : n <= 30 ? `<span class="pill progress">${n === 0 ? 'Today' : `${n} day${n === 1 ? '' : 's'}`}</span>` : `<span class="pill off">${n} days</span>`; };
   const html = `<div class="page">
-  <div class="page-head rise"><div><a href="#/finances" class="back">${L('arrow-right', 14, 'flip')}All finances</a><h1>Domains</h1><p>Every domain you own, when it renews, and what it costs.</p></div>
+  <div class="page-head rise"><div><a href="#/finances" class="back">${L('arrow-right', 14, 'flip')}All finances</a><h1>Domains</h1><p>Every domain you own. Each renewal is logged as an operating cost for its site — automatically for auto-renew, or when you mark it renewed.</p></div>
     <button class="btn primary grow-m" data-act="add-domain">${ICON.plus}Add domain</button></div>
   ${finTabs('domains', d.projects)}
   <div class="kpis rise">
@@ -559,7 +571,7 @@ function viewDomains(d) {
     <div class="card-head" style="padding:18px 20px 10px;margin:0">${H('dm-h', 'globe', 'All domains')}<span class="muted">Soonest first · tap to edit</span></div>
     ${d.domains.map((r) => `<button class="drow" data-act="edit-domain" data-id="${r.id}" aria-label="Edit ${esc(r.domain)}">
       <span class="grow"><b class="mono">${esc(r.domain)}</b><span>${r.project_name ? `<span class="dot" style="width:7px;height:7px;border-radius:2px;background:${esc(r.color)}"></span> ${esc(r.project_name)}` : 'No site'} · ${r.auto ? 'Auto-renews' : 'Renew by hand'}</span></span>
-      <span class="dwhen">${esc(dateLabel(r.renews_on))}</span>${left(r)}<b class="num damt">${money(r.price_cents)}<small>/yr</small></b>${L('chevron-right', 16, 'muted chev')}</button>`).join('')
+      <span class="dwhen">${esc(dateLabel(r.renews_on))}</span>${!r.auto && days(r.renews_on) <= 30 ? `<span class="btn small" role="button" tabindex="0" data-act="mark-renewed" data-id="${r.id}">${L('check', 14)}Mark renewed</span>` : ''}${left(r)}<b class="num damt">${money(r.price_cents)}<small>/yr</small></b>${L('chevron-right', 16, 'muted chev')}</button>`).join('')
       || `<div class="empty big" style="margin:16px 20px 20px">${L('globe', 32)}<b style="color:var(--text)">No domains yet</b><span>Add each one once with its renewal date. They show up in Coming up on the Finances page and count toward running costs.</span><button class="btn primary" data-act="add-domain">${ICON.plus}Add domain</button></div>`}
   </section>
 </div>`;
@@ -762,7 +774,9 @@ document.addEventListener('click', async (e) => {
       case 'fin-site': S.fin.site = v || ''; S.fin.limit = 50; render({ quiet: true }); break;
       case 'fin-kind': S.fin.kind = v; S.fin.limit = 50; render({ quiet: true }); break;
       case 'fin-more': S.fin.limit += 100; render({ quiet: true }); break;
-      case 'add-recurring': S.showForm = 'recurring'; render({ quiet: true }); break;
+      case 'add-recurring': S.billDraft = null; S.showForm = 'recurring'; render({ quiet: true }); break;
+      case 'bill-preset': { const p = BILL_PRESETS[Number(t.dataset.i)]; const f = t.closest('form'); f.name.value = p.name; f.cadence.value = p.cadence; f.amount.focus(); f.querySelectorAll('.choice').forEach((c) => c.setAttribute('aria-pressed', String(c === t))); break; }
+      case 'mark-renewed': await api(`/renewals/${id}/renewed`, { method: 'POST' }); toast('Renewed — cost added to the ledger'); render({ quiet: true }); break;
       case 'del-recurring': await api('/recurring/' + id, { method: 'DELETE' }); toast('Bill removed'); render({ quiet: true }); break;
       case 'del-renewal': await api('/renewals/' + id, { method: 'DELETE' }); render({ quiet: true }); break;
       case 'run-checks': await runChecksNow(); break;
