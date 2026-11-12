@@ -3,6 +3,9 @@ import { LUCIDE } from './lucide.js';
 const $ = (sel, el = document) => el.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const app = $('#app');
+// Key hints match the computer: ⌘ on Mac, Ctrl everywhere else.
+const MAC = /Mac|iPhone|iPad|iPod/.test(navigator.userAgentData?.platform || navigator.platform || navigator.userAgent);
+const MOD = MAC ? '⌘' : 'Ctrl';
 
 // ---------- state ----------
 const S = {
@@ -189,7 +192,7 @@ function shell(r, content, crumb) {
       <p class="crumb"><span class="ws">Workspace / </span><b>${esc(crumb)}</b></p>
       <div class="top-actions">
         <span class="live d-only" title="This page refreshes on its own"><span class="sdot pulse"></span><span id="live-t">Live</span></span>
-        <button class="search-btn" data-act="palette" aria-label="Search or jump to (Command K)">${ICON.search}<span class="grow">Search or jump to…</span><span class="kbd hide-sm">⌘K</span></button>
+        <button class="search-btn" data-act="palette" aria-label="Search or jump to (${MAC ? 'Command' : 'Control'} K)">${ICON.search}<span class="grow">Search or jump to…</span><span class="kbd hide-sm">${MOD} K</span></button>
         <button class="btn primary d-only" data-act="new-note">${ICON.plus}<span>New note</span><span class="kbd">N</span></button>
       </div>
     </div></header>
@@ -329,12 +332,12 @@ function viewProject(d) {
         <textarea class="input" id="note-text" name="text" rows="3" placeholder="Write a note — a to-do, an idea, where you left off…" required maxlength="2000"></textarea>
         <div class="row composer-foot" style="flex-wrap:wrap;justify-content:space-between;margin-top:10px;gap:10px">
           <div class="row kinds" role="group" aria-label="Note type" style="gap:6px;flex-wrap:wrap">${kinds.map((k) => `<button type="button" class="kind" aria-pressed="${S.kind === k}" data-act="kind" data-v="${k}">${L(KIND_ICON[k], 14)}${KIND_LABEL[k]}</button>`).join('')}</div>
-          <button class="btn primary">Add note <span class="kbd">⌘↵</span></button>
+          <button class="btn primary">Add note <span class="kbd">${MOD} ↵</span></button>
         </div>
       </form>
       <div style="display:flex;flex-direction:column;gap:10px">
         ${notes.map((n) => `<article class="note-card rise${n.kind === 'todo' && n.done ? ' done' : ''}">
-          <div style="flex:1;min-width:0"><div class="meta">${kindTag(n.kind)}${n.pinned ? '<span style="font-weight:500;color:var(--body)">Pinned</span>' : ''}<span>· ${esc(rel(n.created_at))}</span>${n.kind === 'todo' ? `<label class="row" style="gap:6px;margin-left:auto;cursor:pointer"><input type="checkbox" data-act="todo" data-id="${n.id}" ${n.done ? 'checked' : ''} style="accent-color:var(--accent)"> Done</label>` : ''}</div>${S.editing === n.id ? `<form data-form="edit-note" data-id="${n.id}" class="edit-note"><label class="sr" for="en-${n.id}">Edit note</label><textarea class="input" id="en-${n.id}" name="text" rows="3" required maxlength="2000">${esc(n.text)}</textarea><div class="row" style="justify-content:flex-end;gap:8px;margin-top:8px"><button type="button" class="btn small" data-act="cancel-edit">Cancel</button><button class="btn small primary">Save <span class="kbd">⌘↵</span></button></div></form>` : `<p class="fmt" data-act="edit-note" data-id="${n.id}" title="Click to edit">${fmt(n.text)}</p>`}</div>
+          <div style="flex:1;min-width:0"><div class="meta">${kindTag(n.kind)}${n.pinned ? '<span style="font-weight:500;color:var(--body)">Pinned</span>' : ''}<span>· ${esc(rel(n.created_at))}</span>${n.kind === 'todo' ? `<label class="row" style="gap:6px;margin-left:auto;cursor:pointer"><input type="checkbox" data-act="todo" data-id="${n.id}" ${n.done ? 'checked' : ''} style="accent-color:var(--accent)"> Done</label>` : ''}</div>${S.editing === n.id ? `<form data-form="edit-note" data-id="${n.id}" class="edit-note"><label class="sr" for="en-${n.id}">Edit note</label><textarea class="input" id="en-${n.id}" name="text" rows="3" required maxlength="2000">${esc(n.text)}</textarea><div class="row" style="justify-content:flex-end;gap:8px;margin-top:8px"><button type="button" class="btn small" data-act="cancel-edit">Cancel</button><button class="btn small primary">Save <span class="kbd">${MOD} ↵</span></button></div></form>` : `<p class="fmt" data-act="edit-note" data-id="${n.id}" title="Click to edit">${fmt(n.text)}</p>`}</div>
           <div class="acts"><button class="icon-btn" data-act="edit-note" data-id="${n.id}" aria-label="Edit note" title="Edit">${ICON.edit}</button><button class="icon-btn${n.pinned ? ' pinned-on' : ''}" data-act="pin" data-id="${n.id}" data-v="${n.pinned ? 0 : 1}" aria-pressed="${!!n.pinned}" aria-label="${n.pinned ? 'Unpin note' : 'Pin note'}" title="${n.pinned ? 'Unpin' : 'Pin'}">${ICON.pin}</button><button class="icon-btn" data-act="del-note" data-id="${n.id}" aria-label="Delete note" title="Delete">${ICON.trash}</button></div>
         </article>`).join('') || `<div class="empty big">${ICON.emptyNote}<b style="color:var(--text)">A clean slate</b><span>Jot down where you left off, a bug to fix, or an idea.</span></div>`}
       </div>` : `
@@ -664,7 +667,7 @@ function openPalette(mode = 'search') { S.palette = { mode, q: '', sel: 0 }; dra
 function closePalette() { S.palette = null; drawPalette(); }
 
 // ---------- shortcuts sheet ----------
-const SHORTCUTS = [['⌘ K', 'Search or run a command'], ['N', 'New note'], ['G then D', 'Go to Dashboard'], ['G then P', 'Go to Projects'], ['G then M', 'Go to Monitoring'], ['G then F', 'Go to Finances'], ['R', 'Refresh now'], ['T', 'Light / dark mode'], ['⌘ ↵', 'Save a note'], ['Esc', 'Close or cancel'], ['?', 'This list']];
+const SHORTCUTS = [[`${MOD} K`, 'Search or run a command'], ['N', 'New note'], ['G then D', 'Go to Dashboard'], ['G then P', 'Go to Projects'], ['G then M', 'Go to Monitoring'], ['G then F', 'Go to Finances'], ['R', 'Refresh now'], ['T', 'Light / dark mode'], [`${MOD} ↵`, 'Save a note'], ['Esc', 'Close or cancel'], ['?', 'This list']];
 function showShortcuts() {
   S.palette = { mode: 'help' };
   $('#overlay').innerHTML = `<div class="scrim" data-act="scrim"><div class="dialog" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" style="max-width:440px"><div class="pad">
