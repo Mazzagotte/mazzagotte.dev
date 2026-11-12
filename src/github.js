@@ -2,10 +2,14 @@
 // Public repos work without a key; private ones need GITHUB_TOKEN (read-only) set on the Worker.
 const TTL = 10 * 60_000;
 
+// Accepts a repo link, or a folder in a monorepo: github.com/owner/repo/tree/main/apps/web
+// A "#also=apps/api,packages" ending adds shared folders whose commits count too.
 export const repoFromUrl = (u) => {
-  const m = String(u || '').match(/^https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i);
-  return m ? `${m[1]}/${m[2]}` : null;
+  const m = String(u || '').match(/^https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/tree\/[^/#?]+\/([^#?]+?))?\/?(?:#also=([^#?]+))?$/i);
+  if (!m) return null;
+  return { repo: `${m[1]}/${m[2]}`, path: m[3] || '', also: m[4] ? decodeURIComponent(m[4]).split(',').map((x) => x.trim()).filter(Boolean) : [] };
 };
+const keyOf = (r) => r.repo + (r.path ? ':' + r.path : '') + (r.also.length ? '+' + r.also.join(',') : '');
 
 async function gh(env, path) {
   const headers = { 'user-agent': 'mazzagotte-hub', accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' };
@@ -27,11 +31,19 @@ function buildState(checks, status) {
   return 'success';
 }
 
-export async function repoFeed(env, repo, { fresh = false } = {}) {
-  const cached = await env.DB.prepare('SELECT * FROM gh_cache WHERE repo = ?').bind(repo).first();
+export async function repoFeed(env, target, { fresh = false } = {}) {
+  const { repo, path, also } = target;
+  const key = keyOf(target);
+  const cached = await env.DB.prepare('SELECT * FROM gh_cache WHERE repo = ?').bind(key).first();
   if (cached && !fresh && Date.now() - cached.fetched_at < TTL) return { ...JSON.parse(cached.body), cached: true };
   try {
-    const [info, commits] = await Promise.all([gh(env, `/repos/${repo}`), gh(env, `/repos/${repo}/commits?per_page=8`)]);
+    // In a monorepo, collect commits for the app's folder plus any shared folders, newest first.
+    const paths = path ? [path, ...also] : [''];
+    const [info, ...lists] = await Promise.all([gh(env, `/repos/${repo}`), ...paths.map((p) => gh(env, `/repos/${repo}/commits?per_page=8${p ? '&path=' + encodeURIComponent(p) : ''}`))]);
+    const seen = new Map();
+    lists.forEach((list, i) => list.forEach((c) => { if (!seen.has(c.sha)) seen.set(c.sha, { ...c, shared: i > 0 }); }));
+    const when = (c) => Date.parse((c.commit.author && c.commit.author.date) || c.commit.committer.date);
+    const commits = [...seen.values()].sort((a, b) => when(b) - when(a)).slice(0, 8);
     const head = commits[0];
     let build = null;
     if (head) {
@@ -42,21 +54,21 @@ export async function repoFeed(env, repo, { fresh = false } = {}) {
       build = buildState(checks, status);
     }
     const body = {
-      repo, url: info.html_url, private: info.private, branch: info.default_branch, pushed_at: info.pushed_at, open_issues: info.open_issues_count,
+      repo, path, url: path ? `${info.html_url}/tree/${info.default_branch}/${path}` : info.html_url, private: info.private, branch: info.default_branch, pushed_at: info.pushed_at, open_issues: info.open_issues_count,
       build,
       commits: commits.map((c) => ({
-        sha: c.sha.slice(0, 7), url: c.html_url,
+        sha: c.sha.slice(0, 7), url: c.html_url, shared: !!c.shared,
         message: String(c.commit.message || '').split('\n')[0].slice(0, 160),
         author: (c.author && c.author.login) || (c.commit.author && c.commit.author.name) || '',
         at: Date.parse((c.commit.author && c.commit.author.date) || c.commit.committer.date),
       })),
     };
     await env.DB.prepare('INSERT INTO gh_cache (repo, body, fetched_at) VALUES (?, ?, ?) ON CONFLICT(repo) DO UPDATE SET body = excluded.body, fetched_at = excluded.fetched_at')
-      .bind(repo, JSON.stringify(body), Date.now()).run();
+      .bind(key, JSON.stringify(body), Date.now()).run();
     return body;
   } catch (e) {
     // Fall back to the last good copy if GitHub is unhappy.
     if (cached) return { ...JSON.parse(cached.body), cached: true, stale: e.message };
-    return { repo, url: `https://github.com/${repo}`, error: e.message, code: e.code || 'error', has_key: !!env.GITHUB_TOKEN };
+    return { repo, path, url: `https://github.com/${repo}`, error: e.message, code: e.code || 'error', has_key: !!env.GITHUB_TOKEN };
   }
 }

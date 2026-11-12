@@ -312,9 +312,9 @@ function ghCard(g) {
   if (g.error) return head(`<a href="${esc(g.url)}" target="_blank" rel="noopener" style="font-size:13px">Open ${L('arrow-up-right', 13)}</a>`) + `<p class="muted" style="margin:6px 0 0;font-size:13px">${esc(g.error)}.${g.code === 'private' || g.code === 'rate' ? ' Add a read-only GitHub key named <span class="mono">GITHUB_TOKEN</span> to the hub in Cloudflare to see it here.' : ''}</p>`;
   const build = { success: ['up', 'Passing', 'circle-check'], failure: ['down', 'Failing', 'circle-alert'], pending: ['progress', 'Building', 'loader'] }[g.build];
   return head(`<button class="icon-btn" data-act="gh-refresh" aria-label="Refresh GitHub" title="Refresh">${ICON.refresh}</button>`) + `
-    <a class="gh-repo" href="${esc(g.url)}" target="_blank" rel="noopener"><span class="mono">${esc(g.repo)}</span>${g.private ? '<span class="pill off">Private</span>' : ''}${L('arrow-up-right', 13)}</a>
+    <a class="gh-repo" href="${esc(g.url)}" target="_blank" rel="noopener"><span class="mono">${esc(g.repo)}${g.path ? `<span class="muted">/${esc(g.path)}</span>` : ''}</span>${g.private ? '<span class="pill off">Private</span>' : ''}${L('arrow-up-right', 13)}</a>
     <p class="muted gh-meta">${build ? `<span class="pill ${build[0]}">${build[1]}</span>` : ''}<span>${L('git-branch', 12)}${esc(g.branch)}</span><span>Pushed ${esc(rel(Date.parse(g.pushed_at)))}</span></p>
-    <ol class="gh-commits">${(g.commits || []).map((c) => `<li><a href="${esc(c.url)}" target="_blank" rel="noopener"><span class="msg">${esc(c.message)}</span><span class="muted"><span class="mono">${esc(c.sha)}</span> · ${esc(c.author)} · ${esc(rel(c.at))}</span></a></li>`).join('') || '<li class="muted">No commits yet.</li>'}</ol>
+    <ol class="gh-commits">${(g.commits || []).map((c) => `<li><a href="${esc(c.url)}" target="_blank" rel="noopener"><span class="msg">${esc(c.message)}</span><span class="muted">${c.shared ? '<span class="tag k-note" style="padding:0 5px;font-size:10px">Shared</span> ' : ''}<span class="mono">${esc(c.sha)}</span> · ${esc(c.author)} · ${esc(rel(c.at))}</span></a></li>`).join('') || '<li class="muted">No commits yet.</li>'}</ol>
     ${g.stale ? `<p class="muted" style="margin:6px 0 0;font-size:12px">Showing the last saved copy — ${esc(g.stale)}.</p>` : ''}`;
 }
 async function loadGitHub(id, fresh) {
