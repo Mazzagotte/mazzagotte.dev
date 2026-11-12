@@ -1,0 +1,5 @@
+# Copy to .dev.vars for local development (never commit .dev.vars)
+DEV_NO_AUTH=1
+RAILWAY_HOOK_SECRET=dev-railway
+DEPLOY_HOOK_SECRET=dev-deploy
+MONEY_HOOK_SECRET=dev-money

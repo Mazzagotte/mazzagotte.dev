@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>mazzagotte.dev</title>
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <meta name="theme-color" content="#F7F7F8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Hub">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/favicon-64.png" type="image/png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/styles.css">
+  <script>
+    // Theme before first paint: saved choice, else the device setting.
+    (function () {
+      var t = localStorage.getItem('theme');
+      var dark = t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+      if (dark) document.documentElement.classList.add('dark');
+      document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#09090B' : '#F7F7F8');
+    })();
+  </script>
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <div id="app"><div class="boot">Loading…</div></div>
+  <div id="overlay"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

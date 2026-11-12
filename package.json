@@ -1,0 +1,15 @@
+{
+  "name": "mazzagotte-hub",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "wrangler d1 migrations apply mazzagotte-hub --remote && wrangler deploy",
+    "db:local": "wrangler d1 migrations apply mazzagotte-hub --local",
+    "migrate": "wrangler d1 migrations apply mazzagotte-hub --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.160.1"
+  }
+}

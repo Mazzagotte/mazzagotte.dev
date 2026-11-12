@@ -1,0 +1,39 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mazzagotte-hub",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  // The hub lives at the bare domain. The split-flap display moved to splitflap.mazzagotte.dev,
+  // and SpareTime stays at sparetime.mazzagotte.dev.
+  "routes": [{ "pattern": "mazzagotte.dev", "custom_domain": true }],
+  "workers_dev": false,
+  // Keep the variables you set in the dashboard (Access settings) when GitHub deploys run.
+  "keep_vars": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // Every request runs through the Worker first, so the login check covers the app's files too.
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mazzagotte-hub",
+      "database_id": "7c2c7c6c-2a4c-4954-999e-22e52dda5964",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Uptime checks every minute (the shortest schedule Cloudflare allows).
+  "triggers": { "crons": ["* * * * *"] },
+  "vars": {
+    "TIMEZONE": "America/Denver",
+    "VAPID_SUBJECT": "https://mazzagotte.dev"
+    // Set in the dashboard (Settings → Variables), not here:
+    //   ACCESS_TEAM_DOMAIN  e.g. https://yourteam.cloudflareaccess.com
+    //   ACCESS_AUD          the Application Audience (AUD) tag
+    //   OWNER_EMAIL         your email (optional extra lock)
+    // Secrets (encrypted): RAILWAY_HOOK_SECRET, DEPLOY_HOOK_SECRET, MONEY_HOOK_SECRET
+  }
+}
