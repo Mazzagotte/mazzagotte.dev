@@ -118,3 +118,5 @@ cp .dev.vars.example .dev.vars   # DEV_NO_AUTH=1 skips the login locally only
 npm run db:local
 npm run dev                      # http://localhost:8787 — run checks with /__scheduled?cron=*+*+*+*+*
 ```
+
+Pushes to `main` build and deploy automatically through Cloudflare Workers Builds. If one does not appear in the build history, check that the Cloudflare Workers and Pages GitHub app has access to this repo.
