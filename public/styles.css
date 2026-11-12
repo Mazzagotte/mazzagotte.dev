@@ -613,3 +613,19 @@ button.site-row.on { background: color-mix(in srgb, var(--accent) 8%, transparen
 .split > .col { display: flex; flex-direction: column; gap: 16px; }
 @media (max-width: 860px) { .split > .col { gap: 12px; } .split > .narrow { gap: 12px; } }
 .fin-cols .narrow .row > span[style*="flex:1"] > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+.site-pick .sep { flex: none; width: 1px; align-self: stretch; margin: 6px 4px; background: var(--border2); }
+.drow { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 20px; border: 0; border-top: 1px solid var(--border); background: none; color: var(--text); text-align: left; }
+.drow:hover { background: var(--well); }
+.drow .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.drow .grow b { font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
+.drow .grow > span { font-size: 12px; color: var(--muted); }
+.drow .dwhen { font-size: 13px; color: var(--body); white-space: nowrap; }
+.drow .damt { font-size: 14px; min-width: 80px; text-align: right; white-space: nowrap; }
+.drow .damt small { font-size: 11px; color: var(--muted); font-weight: 500; margin-left: 2px; }
+.drow .pill { min-width: 74px; justify-content: center; }
+@media (max-width: 860px) {
+  .drow { flex-wrap: wrap; gap: 6px 10px; padding: 14px 16px; }
+  .drow .grow { flex-basis: calc(100% - 30px); }
+  .drow .dwhen { order: 3; } .drow .pill { order: 4; } .drow .damt { order: 5; margin-left: auto; min-width: 0; }
+  .drow .chev { position: absolute; display: none; }
+}

@@ -452,12 +452,31 @@ async function createRecurring(env, b) {
   return env.DB.prepare('SELECT * FROM recurring WHERE id = ?').bind(r.meta.last_row_id).first();
 }
 
+async function domains(env) {
+  const today = todayLocal(tzOf(env));
+  const { results } = await env.DB.prepare(
+    `SELECT r.*, p.name AS project_name, p.color, p.initials, p.ink FROM renewals r LEFT JOIN projects p ON p.id = r.project_id ORDER BY r.renews_on, r.domain`
+  ).all();
+  return { today, domains: results, projects: await allProjects(env) };
+}
+
+async function updateRenewal(env, id, b) {
+  const sets = []; const vals = [];
+  if ('domain' in b) { sets.push('domain = ?'); vals.push(need(str(b.domain, 120), 'Enter the domain')); }
+  if ('renews_on' in b) { if (!DATE_RE.test(b.renews_on || '')) throw new HttpError(400, 'Pick the renewal date'); sets.push('renews_on = ?'); vals.push(b.renews_on); }
+  if ('price' in b) { const c = Math.round(Number(b.price || 0) * 100); sets.push('price_cents = ?'); vals.push(Number.isFinite(c) && c >= 0 ? c : 0); }
+  if ('project_id' in b) { sets.push('project_id = ?'); vals.push(str(b.project_id, 24) || null); }
+  if ('auto' in b) { sets.push('auto = ?'); vals.push(b.auto === true || b.auto === 'on' || b.auto === '1' ? 1 : 0); }
+  if (sets.length) await env.DB.prepare(`UPDATE renewals SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, id).run();
+  return env.DB.prepare('SELECT * FROM renewals WHERE id = ?').bind(id).first();
+}
+
 async function createRenewal(env, b) {
   const domain = need(str(b.domain, 120), 'Enter the domain');
   if (!DATE_RE.test(b.renews_on || '')) throw new HttpError(400, 'Pick the renewal date');
   const cents = Math.round(Number(b.price || 0) * 100);
   const r = await env.DB.prepare('INSERT INTO renewals (project_id, domain, renews_on, price_cents, auto) VALUES (?, ?, ?, ?, ?)')
-    .bind(str(b.project_id, 24), domain, b.renews_on, Number.isFinite(cents) ? cents : 0, b.auto === false ? 0 : 1).run();
+    .bind(str(b.project_id, 24) || null, domain, b.renews_on, Number.isFinite(cents) ? cents : 0, b.auto === false || b.auto === '0' ? 0 : 1).run();
   return env.DB.prepare('SELECT * FROM renewals WHERE id = ?').bind(r.meta.last_row_id).first();
 }
 
@@ -547,9 +566,13 @@ export async function handleApi(request, env, ctx) {
     }
   }
   if (method === 'POST' && path === '/renewals') return json(await createRenewal(env, await readJson(request)), 201);
-  if ((m = path.match(/^\/renewals\/(\d+)$/)) && method === 'DELETE') {
-    await env.DB.prepare('DELETE FROM renewals WHERE id = ?').bind(Number(m[1])).run();
-    return json({ ok: true });
+  if (method === 'GET' && path === '/domains') return json(await domains(env));
+  if ((m = path.match(/^\/renewals\/(\d+)$/))) {
+    if (method === 'PATCH') return json(await updateRenewal(env, Number(m[1]), await readJson(request)));
+    if (method === 'DELETE') {
+      await env.DB.prepare('DELETE FROM renewals WHERE id = ?').bind(Number(m[1])).run();
+      return json({ ok: true });
+    }
   }
   if (method === 'GET' && path === '/ledger.csv') {
     const { results } = await env.DB.prepare(

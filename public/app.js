@@ -116,6 +116,7 @@ function route() {
   const h = location.hash.replace(/^#\/?/, '');
   const [view, id] = h.split('/');
   if (view === 'p' && id) return { view: 'project', id };
+  if (view === 'finances' && id === 'domains') return { view: 'domains' };
   if (view === 'finances' && id) return { view: 'finances', id };
   if (['projects', 'monitoring', 'finances'].includes(view)) return { view };
   return { view: 'dashboard' };
@@ -132,13 +133,14 @@ async function render({ quiet } = {}) {
     if (r.view === 'dashboard') S.data = await api('/dashboard');
     else if (r.view === 'project') S.data = await api('/projects/' + encodeURIComponent(r.id));
     else if (r.view === 'monitoring') S.data = await api('/monitoring');
+    else if (r.view === 'domains') S.data = await api('/domains');
     else if (r.view === 'finances') S.fin.site = r.id || '', S.data = await api('/finances?' + new URLSearchParams({ period: S.period, kind: S.fin.kind === 'all' ? '' : S.fin.kind, site: S.fin.site, q: S.fin.q, limit: S.fin.limit }));
     else S.data = await api('/dashboard');
   } catch (e) {
     app.innerHTML = shell(r, `<div class="page"><div class="empty big"><b>Couldn't load this page</b><span>${esc(e.message)}</span><button class="btn" data-act="reload">Try again</button></div></div>`, 'Error');
     return;
   }
-  const views = { dashboard: viewDashboard, projects: viewProjects, project: viewProject, monitoring: viewMonitoring, finances: viewFinances };
+  const views = { dashboard: viewDashboard, projects: viewProjects, project: viewProject, monitoring: viewMonitoring, finances: viewFinances, domains: viewDomains };
   const { crumb, html } = views[r.view](S.data, r);
   S.loadedAt = Date.now();
   const y = window.scrollY;
@@ -170,7 +172,7 @@ function shell(r, content, crumb) {
       <a class="nav${on('dashboard')}" href="#/" aria-label="Dashboard">${ICON.dash}<span class="lbl">Dashboard</span></a>
       <a class="nav${on('projects')}" href="#/projects" aria-label="Projects">${ICON.folder}<span class="lbl">Projects</span></a>
       <a class="nav${on('monitoring')}" href="#/monitoring" aria-label="Monitoring">${ICON.gauge}<span class="lbl">Monitoring</span></a>
-      <a class="nav${on('finances')}" href="#/finances" aria-label="Finances">${ICON.money}<span class="lbl">Finances</span></a>
+      <a class="nav${on('finances') || on('domains')}" href="#/finances" aria-label="Finances">${ICON.money}<span class="lbl">Finances</span></a>
     </nav>
     <div style="display:flex;flex-direction:column;gap:2px">
       <p class="sec">Projects</p>
@@ -199,7 +201,7 @@ function shell(r, content, crumb) {
   <a href="#/projects" class="${on('projects').trim()}">${ICON.folder}Projects</a>
   <div class="plus"><button data-act="new-note" aria-label="New note">${L('plus', 24)}</button></div>
   <a href="#/monitoring" class="${on('monitoring').trim()}">${ICON.gauge}Status</a>
-  <a href="#/finances" class="${on('finances').trim()}">${ICON.money}Money</a>
+  <a href="#/finances" class="${(on('finances') || on('domains')).trim()}">${ICON.money}Money</a>
 </nav>`;
 }
 
@@ -447,11 +449,7 @@ function viewFinances(d) {
   <div class="page-head rise"><div>${d.site ? `<a href="#/finances" class="back">${L('arrow-right', 14, 'flip')}All finances</a>` : ''}<h1 class="${d.site ? '' : 'd-only'}">${d.site ? esc(siteName) : 'Finances'}</h1><p>${d.site ? (d.site === '_' ? 'Costs that aren’t tied to one site, like your workspace and tools.' : `Money in and out for ${esc(siteName)}.`) : 'Every site at a glance. Stripe charges and monthly bills are added automatically.'}</p></div>
     <div class="row" style="gap:10px;flex-wrap:wrap"><div class="seg" role="group" aria-label="Period"><button class="${d.period === 'month' ? 'on' : ''}" aria-pressed="${d.period === 'month'}" data-act="period" data-v="month">Month</button><button class="${d.period === 'year' ? 'on' : ''}" aria-pressed="${d.period === 'year'}" data-act="period" data-v="year">Year</button></div>
     <a class="btn exp" href="/api/ledger.csv" download aria-label="Export CSV">${L('download', 15)}<span>Export CSV</span></a><button class="btn primary grow-m" data-act="add-entry">${ICON.plus}Add entry</button></div></div>
-  <div class="hscroll site-pick rise" role="group" aria-label="Show finances for">
-    <a class="filter${!d.site ? ' on' : ''}" ${!d.site ? 'aria-current="page"' : ''} href="#/finances">${L('layout-dashboard', 14)}Overview</a>
-    ${d.projects.map((p) => `<a class="filter${d.site === p.id ? ' on' : ''}" ${d.site === p.id ? 'aria-current="page"' : ''} href="#/finances/${esc(p.id)}"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(p.color)}"></span>${esc(p.name)}</a>`).join('')}
-    <a class="filter${d.site === '_' ? ' on' : ''}" ${d.site === '_' ? 'aria-current="page"' : ''} href="#/finances/_">Shared costs</a>
-  </div>
+  ${finTabs(d.site, d.projects)}
   ${S.showForm === 'entry' ? entryForm(null, d, projOpts) : ''}
   <div class="kpis rise">
     <div class="kpi"><p class="l">${L('trending-up', 14)}Income ${per}</p><p class="v">${money(t.income)}</p>${delta(t.income, d.prev.income)}</div>
@@ -517,14 +515,60 @@ function viewFinances(d) {
         ${S.showForm === 'recurring' ? `<form data-form="recurring" style="display:flex;flex-direction:column;gap:10px;margin:10px 0"><label class="field"><span>What is it?</span><input class="input" name="name" required maxlength="80" placeholder="Railway — Hobby plan"></label><div class="form-row"><label class="field"><span>Amount (USD)</span><input class="input" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" required placeholder="5.00"></label><label class="field"><span>Every</span><select class="input" name="cadence"><option value="monthly">Month</option><option value="yearly">Year</option></select></label></div><div class="form-row"><label class="field"><span>Next charge</span><input class="input" type="date" name="next_on" required value="${esc(d.today)}"></label><label class="field"><span>Site</span><select class="input" name="project_id">${projOpts(d.site && d.site !== '_' ? d.site : '')}</select></label></div><div class="row" style="justify-content:flex-end;gap:8px"><button type="button" class="btn small" data-act="cancel-form">Cancel</button><button class="btn small primary">Save bill</button></div></form>` : ''}
         ${d.recurring.map((r) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px;${r.active ? '' : 'opacity:.55'}"><span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(r.color || '#71717A')}"></span><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span style="font-size:14px;font-weight:500">${esc(r.name)}</span><span class="muted" style="font-size:12px">${money(r.amount_cents)} / ${r.cadence === 'yearly' ? 'year' : 'month'} · ${r.active ? 'next ' + esc(dateLabel(r.next_on)) : 'paused'}</span></span><input type="checkbox" class="switch" role="switch" aria-label="${esc(r.name)} active" data-act="rec-on" data-id="${r.id}" ${r.active ? 'checked' : ''}><button class="icon-btn" data-act="del-recurring" data-id="${r.id}" aria-label="Delete ${esc(r.name)}">${ICON.trash}</button></div>`).join('')}
       </section>
-      <section class="card" aria-labelledby="ren-h"><div class="card-head">${H('ren-h', 'globe', 'Domains')}<button class="btn small" data-act="add-renewal">+ Add</button></div>
-        ${S.showForm === 'renewal' ? `<form data-form="renewal" style="display:flex;flex-direction:column;gap:10px;margin:10px 0"><label class="field"><span>Domain</span><input class="input mono" name="domain" required placeholder="tournamentcentral.app"></label><div class="form-row"><label class="field"><span>Renews on</span><input class="input" type="date" name="renews_on" required></label><label class="field"><span>Price (USD)</span><input class="input" type="number" min="0" step="0.01" name="price"></label></div><label class="field"><span>Site</span><select class="input" name="project_id">${projOpts('', 'None')}</select></label><div class="row" style="justify-content:flex-end;gap:8px"><button type="button" class="btn small" data-act="cancel-form">Cancel</button><button class="btn small primary">Save</button></div></form>` : ''}
-        ${d.renewals.map((r) => `<div class="row" style="padding:10px 0;border-top:1px solid var(--border);gap:10px"><span style="flex:1;min-width:0;display:flex;flex-direction:column"><span class="mono" style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis">${esc(r.domain)}</span><span class="muted" style="font-size:12px">Renews ${esc(dateLabel(r.renews_on))}${r.project_name ? ' · ' + esc(r.project_name) : ''}</span></span><span style="font-size:14px;font-weight:500">${money(r.price_cents)}</span><button class="icon-btn" data-act="del-renewal" data-id="${r.id}" aria-label="Delete renewal">${ICON.trash}</button></div>`).join('') || '<p class="muted" style="margin:6px 0 0;font-size:14px">Add each domain once; renewals show up in Coming up.</p>'}
-      </section>
+
     </aside>
   </div>
 </div>`;
   return { crumb: 'Finances', html };
+}
+
+function finTabs(cur, projects) {
+  const t = (key, href, inner) => `<a class="filter${cur === key ? ' on' : ''}" ${cur === key ? 'aria-current="page"' : ''} href="${href}">${inner}</a>`;
+  return `<nav class="hscroll site-pick rise" aria-label="Finances pages">
+    ${t('', '#/finances', `${L('layout-dashboard', 14)}Overview`)}
+    ${t('domains', '#/finances/domains', `${L('globe', 14)}Domains`)}
+    <span class="sep" aria-hidden="true"></span>
+    ${projects.map((p) => t(p.id, `#/finances/${esc(p.id)}`, `<span class="dot" style="width:8px;height:8px;border-radius:2px;background:${esc(p.color)}"></span>${esc(p.name)}`)).join('')}
+    ${t('_', '#/finances/_', 'Shared costs')}
+  </nav>`;
+}
+
+// ---------- domains ----------
+function viewDomains(d) {
+  const days = (on) => Math.round((new Date(on + 'T12:00:00') - new Date(d.today + 'T12:00:00')) / 86400000);
+  const yearly = d.domains.reduce((a, r) => a + r.price_cents, 0);
+  const soon = d.domains.filter((r) => days(r.renews_on) >= 0 && days(r.renews_on) <= 30);
+  const late = d.domains.filter((r) => days(r.renews_on) < 0);
+  const next = d.domains.find((r) => days(r.renews_on) >= 0);
+  const left = (r) => { const n = days(r.renews_on); return n < 0 ? `<span class="pill down">${-n} day${n === -1 ? '' : 's'} overdue</span>` : n <= 30 ? `<span class="pill progress">${n === 0 ? 'Today' : `${n} day${n === 1 ? '' : 's'}`}</span>` : `<span class="pill off">${n} days</span>`; };
+  const html = `<div class="page">
+  <div class="page-head rise"><div><a href="#/finances" class="back">${L('arrow-right', 14, 'flip')}All finances</a><h1>Domains</h1><p>Every domain you own, when it renews, and what it costs.</p></div>
+    <button class="btn primary grow-m" data-act="add-domain">${ICON.plus}Add domain</button></div>
+  ${finTabs('domains', d.projects)}
+  <div class="kpis rise">
+    <div class="kpi"><p class="l">${L('globe', 14)}Domains</p><p class="v">${d.domains.length}</p><span class="delta flat">${d.domains.filter((r) => r.auto).length} on auto-renew</span></div>
+    <div class="kpi"><p class="l">${L('receipt', 14)}Per year</p><p class="v">${money(yearly)}</p><span class="delta flat">About ${money(Math.round(yearly / 12))} a month</span></div>
+    <div class="kpi"><p class="l">${L('calendar-clock', 14)}Next renewal</p><p class="v mono" style="font-size:18px;padding-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${next ? esc(next.domain) : '—'}</p><span class="delta flat">${next ? `${esc(dateLabel(next.renews_on))} · ${money(next.price_cents)}` : 'Nothing scheduled'}</span></div>
+    <div class="kpi"><p class="l">${L('circle-alert', 14)}Needs attention</p><p class="v ${late.length ? 'neg' : ''}">${late.length + soon.length}</p><span class="delta ${late.length ? 'bad' : 'flat'}">${late.length ? `${late.length} overdue` : soon.length ? 'Renewing within 30 days' : 'Nothing due in 30 days'}</span></div>
+  </div>
+  ${S.showForm === 'domain' ? domainForm(null, d) : ''}
+  <section class="card rise" style="padding:0;overflow:hidden;margin-top:16px" aria-labelledby="dm-h">
+    <div class="card-head" style="padding:18px 20px 10px;margin:0">${H('dm-h', 'globe', 'All domains')}<span class="muted">Soonest first · tap to edit</span></div>
+    ${d.domains.map((r) => `<button class="drow" data-act="edit-domain" data-id="${r.id}" aria-label="Edit ${esc(r.domain)}">
+      <span class="grow"><b class="mono">${esc(r.domain)}</b><span>${r.project_name ? `<span class="dot" style="width:7px;height:7px;border-radius:2px;background:${esc(r.color)}"></span> ${esc(r.project_name)}` : 'No site'} · ${r.auto ? 'Auto-renews' : 'Renew by hand'}</span></span>
+      <span class="dwhen">${esc(dateLabel(r.renews_on))}</span>${left(r)}<b class="num damt">${money(r.price_cents)}<small>/yr</small></b>${L('chevron-right', 16, 'muted chev')}</button>`).join('')
+      || `<div class="empty big" style="margin:16px 20px 20px">${L('globe', 32)}<b style="color:var(--text)">No domains yet</b><span>Add each one once with its renewal date. They show up in Coming up on the Finances page and count toward running costs.</span><button class="btn primary" data-act="add-domain">${ICON.plus}Add domain</button></div>`}
+  </section>
+</div>`;
+  return { crumb: 'Domains', html };
+}
+
+function domainForm(r, d) {
+  const v = r || { domain: '', renews_on: '', price_cents: '', project_id: '', auto: 1 };
+  return `<form class="card rise" data-form="domain" data-id="${r ? r.id : ''}" style="margin-top:16px;display:flex;flex-direction:column;gap:12px"><h2>${r ? 'Edit domain' : 'Add a domain'}</h2>
+    <div class="form-row"><label class="field" style="flex:2 1 240px"><span>Domain</span><input class="input mono" name="domain" required maxlength="120" placeholder="tournamentcentral.app" value="${esc(v.domain)}"></label><label class="field"><span>Renews on</span><input class="input" type="date" name="renews_on" required value="${esc(v.renews_on)}"></label><label class="field"><span>Price per year (USD)</span><input class="input" type="number" min="0" step="0.01" inputmode="decimal" name="price" value="${v.price_cents !== '' ? (v.price_cents / 100).toFixed(2) : ''}" placeholder="14.00"></label></div>
+    <div class="form-row"><label class="field"><span>Site</span><select class="input" name="project_id"><option value="">No site</option>${d.projects.map((p) => `<option value="${esc(p.id)}"${v.project_id === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label class="field"><span>Renewal</span><select class="input" name="auto"><option value="1"${v.auto ? ' selected' : ''}>Auto-renews</option><option value="0"${v.auto ? '' : ' selected'}>Renew by hand</option></select></label></div>
+    <div class="row" style="justify-content:space-between;gap:10px">${r ? `<button type="button" class="btn danger" data-act="del-domain" data-id="${r.id}">${ICON.trash}Delete</button>` : '<span></span>'}<div class="row" style="gap:10px"><button type="button" class="btn" data-act="cancel-form">Cancel</button><button class="btn primary">${r ? 'Save' : 'Add domain'}</button></div></div></form>`;
 }
 
 function entryForm(r, d, projOpts) {
@@ -555,7 +599,7 @@ function paletteItems() {
     { label: 'Add an expense', icon: 'receipt', hint: '', run: () => { closePalette(); S.showForm = 'entry'; location.hash = '#/finances'; render(); } },
     { label: 'Keyboard shortcuts', icon: 'keyboard', hint: '?', run: () => { closePalette(); showShortcuts(); } },
   ].filter((a) => m(a.label));
-  const pages = [['Dashboard', '#/', 'layout-dashboard'], ['Projects', '#/projects', 'folder'], ['Monitoring', '#/monitoring', 'activity'], ['Finances', '#/finances', 'wallet']]
+  const pages = [['Dashboard', '#/', 'layout-dashboard'], ['Projects', '#/projects', 'folder'], ['Monitoring', '#/monitoring', 'activity'], ['Finances', '#/finances', 'wallet'], ['Domains', '#/finances/domains', 'globe']]
     .filter(([l]) => m(l)).map(([label, href, icon]) => ({ label, href, icon }));
   const projects = S.projects.filter((p) => m(p.name)).map((p) => ({ label: p.name, href: '#/p/' + p.id, p }));
   const found = S.palette.found && S.palette.found.q === q ? S.palette.found : { notes: [], links: [] };
@@ -709,6 +753,9 @@ document.addEventListener('click', async (e) => {
       case 'del-link': await api('/links/' + id, { method: 'DELETE' }); toast('Link removed'); render({ quiet: true }); break;
       case 'del-entry': await api('/ledger/' + id, { method: 'DELETE' }); closePalette(); S.showForm = null; toast('Entry deleted'); render({ quiet: true }); break;
       case 'edit-entry': { const r = S.data.rows.find((x) => x.id === Number(id)); if (r) editEntryDialog(r); break; }
+      case 'add-domain': S.showForm = 'domain'; render({ quiet: true }); setTimeout(() => { const i = $('form[data-form="domain"] input'); if (i) i.focus(); }, 0); break;
+      case 'edit-domain': { const r = S.data.domains.find((x) => x.id === Number(id)); if (r) { S.palette = { mode: 'domain' }; $('#overlay').innerHTML = `<div class="scrim" data-act="scrim"><div class="dialog" role="dialog" aria-modal="true" aria-label="Edit domain">${domainForm(r, S.data).replace('class="card rise"', 'class="pad"').replace('margin-top:16px;', '')}</div></div>`; } break; }
+      case 'del-domain': await api('/renewals/' + id, { method: 'DELETE' }); closePalette(); S.showForm = null; toast('Domain removed'); render({ quiet: true }); break;
       case 'fin-site': S.fin.site = v || ''; S.fin.limit = 50; render({ quiet: true }); break;
       case 'fin-kind': S.fin.kind = v; S.fin.limit = 50; render({ quiet: true }); break;
       case 'fin-more': S.fin.limit += 100; render({ quiet: true }); break;
@@ -778,6 +825,13 @@ document.addEventListener('submit', async (e) => {
       case 'entry': {
         if (f.dataset.id) { await api('/ledger/' + f.dataset.id, { method: 'PATCH', body: data }); closePalette(); toast('Entry saved'); }
         else { await api('/ledger', { method: 'POST', body: data }); S.showForm = null; toast('Entry saved'); }
+        render({ quiet: true });
+        break;
+      }
+      case 'domain': {
+        const body = { ...data, auto: data.auto === '1' };
+        if (f.dataset.id) { await api('/renewals/' + f.dataset.id, { method: 'PATCH', body }); closePalette(); toast('Domain saved'); }
+        else { await api('/renewals', { method: 'POST', body }); S.showForm = null; toast('Domain added'); }
         render({ quiet: true });
         break;
       }
