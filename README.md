@@ -92,7 +92,7 @@ Project ids: `tc`, `bw`, `st`, `usbc`, `pg`, `mz`, `208`, `gg`.
 ## Checks
 
 Starting checks: Tournament Central, BracketWorks, SpareTime, Ada County USBC homepages, and the display's `/api/health`.
-The Gutter Gussie club site's `/api/health` check is added switched off — turn it on under **Monitoring → Checks** once the site is deployed.
+The Gutter Gussie homepage check is added switched off — turn it on under **Monitoring → Checks** once the site is deployed.
 The Backend's `/health` check is there but switched off until the Backend has that route — turn it on under **Monitoring → Checks**.
 Add more checks there (for example `https://review-adacountyusbc.org/health` once it exists).
 

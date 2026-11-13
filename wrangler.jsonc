@@ -30,8 +30,7 @@
     },
     // Read-only use: the hub backs these up nightly. Each site still owns its own database.
     { "binding": "SPARETIME_DB", "database_name": "sparetime", "database_id": "6eb77ed3-bf35-4fcd-83c7-379940f88eac" },
-    { "binding": "USBC_DB", "database_name": "ada-county-usbc-portal", "database_id": "6f7d4e42-9220-43a1-9f28-c1fb594a9396" },
-    { "binding": "GG_DB", "database_name": "gutter-gussie", "database_id": "407ca3cc-833e-44ac-a4f7-e4a8807f9e37" }
+    { "binding": "USBC_DB", "database_name": "ada-county-usbc-portal", "database_id": "6f7d4e42-9220-43a1-9f28-c1fb594a9396" }
   ],
   // Uptime checks every minute (the shortest schedule Cloudflare allows).
   "triggers": { "crons": ["* * * * *"] },
