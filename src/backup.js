@@ -3,7 +3,7 @@ import { alert, logEvent } from './events.js';
 import { todayLocal } from './util.js';
 
 const KEEP_DAYS = 30;
-export const backupDbs = (env) => [['hub', 'mazzagotte.dev hub', env.DB], ['sparetime', 'SpareTime', env.SPARETIME_DB], ['usbc', 'Ada County USBC', env.USBC_DB]].filter(([, , db]) => db);
+export const backupDbs = (env) => [['hub', 'mazzagotte.dev hub', env.DB], ['sparetime', 'SpareTime', env.SPARETIME_DB], ['usbc', 'Ada County USBC', env.USBC_DB], ['gg', 'Gutter Gussie', env.GG_DB]].filter(([, , db]) => db);
 
 const b64 = (buf) => { let s = ''; const a = new Uint8Array(buf); for (let i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s); };
 const clean = (v) => (v instanceof ArrayBuffer ? { $b64: b64(v) } : Array.isArray(v) ? { $b64: b64(new Uint8Array(v).buffer) } : v);

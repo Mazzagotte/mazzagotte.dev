@@ -609,7 +609,7 @@ export async function handleApi(request, env, ctx) {
   if (method === 'POST' && path === '/backups/run') return json({ results: await runBackups(env, ctx) });
   if (method === 'GET' && path === '/backups/file') {
     const key = url.searchParams.get('key') || '';
-    if (!/^(hub|sparetime|usbc)\/\d{4}-\d{2}-\d{2}\.json\.gz$/.test(key) || !env.BACKUPS) throw new HttpError(404, 'No such backup');
+    if (!/^(hub|sparetime|usbc|gg)\/\d{4}-\d{2}-\d{2}\.json\.gz$/.test(key) || !env.BACKUPS) throw new HttpError(404, 'No such backup');
     const obj = await env.BACKUPS.get(key);
     if (!obj) throw new HttpError(404, 'No such backup');
     return new Response(obj.body, { headers: { 'content-type': 'application/gzip', 'content-disposition': `attachment; filename="${key.replace('/', '-')}"`, 'cache-control': 'no-store' } });

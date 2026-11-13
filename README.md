@@ -78,7 +78,7 @@ curl -fsS -X POST https://mazzagotte.dev/hooks/deploy \
   -d '{"project":"usbc","ok":true,"commit":"'"$WORKERS_CI_COMMIT_SHA"'"}'
 ```
 
-Project ids: `tc`, `bw`, `st`, `usbc`, `pg`, `mz`, `208`.
+Project ids: `tc`, `bw`, `st`, `usbc`, `pg`, `mz`, `208`, `gg`.
 
 **`/hooks/money`** — the Tournament Central Backend calls this after it verifies a Stripe webhook:
 
@@ -92,6 +92,7 @@ Project ids: `tc`, `bw`, `st`, `usbc`, `pg`, `mz`, `208`.
 ## Checks
 
 Starting checks: Tournament Central, BracketWorks, SpareTime, Ada County USBC homepages, and the display's `/api/health`.
+The Gutter Gussie club site's `/api/health` check is added switched off — turn it on under **Monitoring → Checks** once the site is deployed.
 The Backend's `/health` check is there but switched off until the Backend has that route — turn it on under **Monitoring → Checks**.
 Add more checks there (for example `https://review-adacountyusbc.org/health` once it exists).
 
