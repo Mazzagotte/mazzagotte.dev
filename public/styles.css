@@ -818,3 +818,95 @@ button.site-row.on { background: color-mix(in srgb, var(--accent) 8%, transparen
 .lockup { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
 .lockup .wm { font-family: 'Bodoni Moda', Georgia, serif; font-size: 22px; line-height: 1; letter-spacing: 0.04em; color: var(--text); padding: 5px 2px; border-top: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; }
 .lockup .sub { font-family: 'Geist Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+
+/* =====================================================================
+   EDITORIAL (M·III) — bone & ink, muted gold, serif display, hairlines
+   ===================================================================== */
+:root {
+  --bg: #F4F1EA; --surface: #FBF9F4; --well: #F0ECE3; --subtle: #EAE5DA; --border: #E0D9CB; --border2: #CBC2B0;
+  --text: #111111; --text2: #1A1A1A; --body: #3B3833; --muted: #67604F; --link: #85642B; --hover: #A39A88;
+  --mark-bg: #111111; --mark-fg: #F4F1EA; --input: #FBF9F4; --on-bg: #111111; --on-fg: #F4F1EA;
+  --glass: rgba(244, 241, 234, .82); --accent: #B08D57; --accent2: #B08D57; --gold-ink: #85642B;
+  --card-shadow: none; --card-lift: 0 10px 30px -18px rgba(17, 17, 17, .25); --hi: transparent;
+  --serif: 'Bodoni Moda', 'Didot', Georgia, serif;
+}
+html.dark {
+  --bg: #0E0E0F; --surface: #151514; --well: #1C1B19; --subtle: #23211E; --border: #2B2925; --border2: #3D3a34;
+  --text: #F4F1EA; --text2: #E8E3D8; --body: #CFC8BA; --muted: #A0988A; --link: #D4B57A; --hover: #5C574E;
+  --mark-bg: #F4F1EA; --mark-fg: #111111; --input: #1C1B19; --on-bg: #F4F1EA; --on-fg: #111111;
+  --glass: rgba(14, 14, 15, .82); --accent: #C8A96A; --accent2: #C8A96A; --gold-ink: #D4B57A;
+  --card-shadow: none; --card-lift: 0 14px 34px -18px rgba(0, 0, 0, .8); --hi: transparent;
+}
+::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+
+/* Serif for the big moments */
+.page-head h1, .proj-head h1, .feat h2, .kpi .v, .stat b, .money3 .stat b, .site-net, .be-big b, .fact b,
+.empty.big b, .dialog h2, .tadd + * h2 { font-family: var(--serif); font-weight: 500; letter-spacing: 0; }
+.page-head h1 { font-size: 44px; line-height: 1.05; }
+.proj-head h1 { font-size: 36px !important; letter-spacing: 0 !important; }
+.feat h2 { font-size: 34px !important; letter-spacing: 0 !important; }
+.kpi .v, .money3 .stat b { font-size: 30px; }
+.stat b { font-size: 26px; }
+.grad { background: none !important; -webkit-background-clip: border-box; background-clip: border-box; color: var(--gold-ink) !important; font-style: italic; }
+
+/* Masthead: a rule above and below every page title, like the lines around M·III */
+.page-head { border-top: 1.5px solid var(--text); border-bottom: 1px solid var(--border2); padding: 18px 0 20px; margin-bottom: 28px; align-items: flex-end; }
+.page-head p { font-size: 15px; }
+.page-head > div > .muted:first-child { text-transform: uppercase; letter-spacing: .22em; font-size: 11px !important; font-weight: 500; color: var(--muted); }
+
+/* Section labels: small, widely spaced capitals with a roman numeral */
+.card h2.ih, .card-head h2, .tgroup h2, .nfilter + * h2 { font-family: 'Geist', sans-serif; font-size: 11px !important; font-weight: 600 !important; letter-spacing: .18em; text-transform: uppercase; color: var(--text2); }
+.card h2.ih .lu { display: none; }
+.dash, .split, .fin-cols, .page { counter-reset: sec; }
+.card h2.ih::before { content: ""; display: inline-block; width: 18px; height: 1.5px; background: var(--accent); margin-right: 12px; vertical-align: middle; }
+.kpi .l, .stat span, .fact .fl, .well .label, .upnext .label, .sub-h, .metrics dt { text-transform: uppercase; letter-spacing: .14em; font-size: 10.5px !important; font-weight: 500; }
+.kpi .l .lu, .stat span .lu, .fact .fl .lu { display: none; }
+
+/* Hairlines instead of glows */
+.card, .kpi, .note-card, .qlink, .prow, .stat, .well, .dialog, .fact, .be-mini, .metrics div, .status-chip, .site-card, .tlist, .tadd { border-radius: 8px !important; box-shadow: none !important; }
+.card, .kpi, .note-card, .qlink, .prow, .dialog, .tlist, .tadd { border: 1px solid var(--border); background: var(--surface); }
+.stat, .fact, .be-mini, .well, .metrics div { background: transparent !important; border: 1px solid var(--border) !important; }
+@media (hover: hover) {
+  article.card.stripe:hover, .kpi:hover, .qlink:hover, .prow:hover, .note-card:hover, .site-card:hover { transform: none !important; box-shadow: none !important; border-color: var(--border2) !important; }
+}
+.stripe::before { height: 2px !important; background: var(--c, var(--accent)) !important; box-shadow: none !important; opacity: .9; }
+.feat { background: var(--surface) !important; box-shadow: none !important; }
+.feat .tile.lg, .proj-head .tile.lg, .tile { box-shadow: none !important; }
+.tile { border-radius: 6px !important; font-family: var(--serif); font-weight: 500; letter-spacing: .02em; }
+.sdot, .sdot:not(.bad):not(.unk):not(.off), .sdot.bad { box-shadow: none !important; }
+.sdot.pulse, .sdot.glow { animation: none; }
+.nav.on::before { box-shadow: none; background: var(--accent); }
+.nav.on .dot { box-shadow: none; }
+.scrim { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(17, 17, 17, .45); }
+
+/* Buttons and controls: ink, square-ish, no gradients */
+.btn, .chip, .filter, .kind, .input, .seg, .seg button, .search-btn, .icon-btn, .choice, .tdate, .count-pill { border-radius: 6px !important; }
+.btn.primary, .tabbar .plus button, .btn.dark { background: var(--on-bg) !important; border-color: var(--on-bg) !important; color: var(--on-fg) !important; box-shadow: none !important; }
+.btn.primary .kbd { background: transparent; color: inherit; border-color: color-mix(in srgb, var(--on-fg) 35%, transparent); opacity: .8; }
+.btn:not(.primary):not(.dark) { box-shadow: none !important; background: transparent; }
+.filter.on, .seg button.on, .kind[aria-pressed="true"] { box-shadow: none !important; background: var(--on-bg); color: var(--on-fg); border-color: var(--on-bg); }
+.pill { border-radius: 3px !important; text-transform: uppercase; letter-spacing: .1em; font-size: 10px !important; font-weight: 600; }
+.tag { border-radius: 3px !important; }
+
+/* Gold for progress, selection and live accents */
+.meter span, .be-mini .meter span { background: var(--accent) !important; }
+.tabs .tab.on { box-shadow: inset 0 -2px 0 var(--accent); }
+.tabbar a.on::after { background: var(--accent); box-shadow: none; }
+.spk-wide { color: var(--gold-ink); }
+.fmt a, .gh-all, .back:hover { color: var(--gold-ink); }
+.todo input, .trow input[type="checkbox"], .stodo input { accent-color: var(--gold-ink); }
+.due.today { color: var(--gold-ink); }
+.composer.drop { outline-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+.ptr.ready { color: var(--accent); }
+
+/* Sidebar and top bar */
+.side { background: var(--bg); border-right-color: var(--border2); }
+.top, .topbar { background: var(--glass); }
+.lockup .wm { color: var(--text); }
+@media (max-width: 860px) {
+  .page-head { padding: 14px 0 16px; margin-bottom: 20px; }
+  .page-head h1 { font-size: 32px; }
+  .feat h2 { font-size: 28px !important; }
+  .kpi .v, .money3 .stat b { font-size: 22px; }
+  .tabbar { box-shadow: none; border-top: 1px solid var(--border2); background: var(--glass); }
+}

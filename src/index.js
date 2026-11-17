@@ -16,6 +16,12 @@ export default {
     const url = new URL(request.url);
     try {
       if (url.pathname.startsWith('/hooks/')) return await handleHook(request, env, ctx);
+      // Public brand assets (the logo shown on Cloudflare's login page). Images only, nothing private.
+      if (/^\/brand\/[\w.-]+\.(png|svg)$/.test(url.pathname) && request.method === 'GET') {
+        const res = await env.ASSETS.fetch(request);
+        const h = new Headers(res.headers); h.set('cache-control', 'public, max-age=86400'); h.set('access-control-allow-origin', '*');
+        return new Response(res.body, { status: res.status, headers: h });
+      }
 
       let owner;
       try {

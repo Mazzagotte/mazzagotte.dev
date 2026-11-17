@@ -113,7 +113,7 @@ const fail = (e) => toast(e.message || 'Something went wrong', { error: true });
 function setTheme(dark) {
   document.documentElement.classList.toggle('dark', dark);
   localStorage.setItem('theme', dark ? 'dark' : 'light');
-  document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#09090B' : '#F7F7F8');
+  document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#0E0E0F' : '#F4F1EA');
 }
 const isDark = () => document.documentElement.classList.contains('dark');
 
