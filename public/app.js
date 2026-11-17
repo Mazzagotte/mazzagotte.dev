@@ -173,7 +173,7 @@ function shell(r, content, crumb) {
 <div class="shell">
   <aside class="side${S.collapsed ? ' collapsed' : ''}">
     <div class="row" style="justify-content:space-between">
-      <a class="brand" href="#/" aria-label="mazzagotte.dev home"><span class="mark">M</span><span class="lbl mono" style="font-weight:500;font-size:14px">mazzagotte.dev</span></a>
+      <a class="brand" href="#/" aria-label="mazzagotte.dev home"><span class="mark serif" aria-hidden="true">M</span><span class="lbl lockup" aria-hidden="true"><span class="wm">M·III</span><span class="sub">mazzagotte.dev</span></span></a>
       <button class="icon-btn lbl" data-act="side" aria-label="Collapse sidebar">${ICON.panel}</button>
     </div>
     ${S.collapsed ? `<button class="icon-btn" style="align-self:center;border:1px solid var(--border)" data-act="side" aria-label="Expand sidebar">${ICON.panel}</button>` : ''}

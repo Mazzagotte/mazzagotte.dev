@@ -809,3 +809,12 @@ button.site-row.on { background: color-mix(in srgb, var(--accent) 8%, transparen
   .dash > .dcol > .o1 { order: 1; } .dash > .dcol > .o2 { order: 2; } .dash > .dcol > .o3 { order: 3; } .dash > .dcol > .o4 { order: 4; }
   .money3 .stat b { font-size: 17px; }
 }
+
+/* ---------- M·III logo ---------- */
+.mark.serif { font-family: 'Bodoni Moda', Georgia, serif; font-weight: 500; font-size: 14px; line-height: 1; position: relative; }
+.mark.serif::before, .mark.serif::after { content: ""; position: absolute; left: 7px; right: 7px; height: 1.5px; background: currentColor; }
+.mark.serif::before { top: 7px; } .mark.serif::after { bottom: 7px; }
+.side:not(.collapsed) .brand .mark { display: none; }
+.lockup { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.lockup .wm { font-family: 'Bodoni Moda', Georgia, serif; font-size: 22px; line-height: 1; letter-spacing: 0.04em; color: var(--text); padding: 5px 2px; border-top: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; }
+.lockup .sub { font-family: 'Geist Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
