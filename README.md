@@ -4,7 +4,7 @@ James's private project hub: every project with its notes, to-dos and links; upt
 
 - **Dashboard** — the project you touched most recently, latest activity, site status, this month's money, to-dos across all projects, quick links
 - **Projects** — notes tagged Note / To do / Idea / Rule / Infra, pin, delete with Undo, links, incidents
-- **Monitoring** — checks every site every minute, opens an incident after 2 failures in a row, push alert to your phone, "back up" alert when it recovers, 90-day uptime strip
+- **Monitoring** — checks every site every 5 minutes, opens an incident after 2 failures in a row, push alert to your phone, "back up" alert when it recovers, 90-day uptime strip
 - **Finances** — income, costs and net by month or year; Stripe payments arrive automatically from the Backend; manual entries for hosting and domains; domain renewals; CSV export
 - **⌘K** to jump anywhere, **N** for a quick note, light/dark, works as a home-screen app on your phone
 

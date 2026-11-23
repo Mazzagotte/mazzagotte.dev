@@ -4,6 +4,7 @@ import { alert } from './events.js';
 import { minutesText } from './util.js';
 
 const FAILS_TO_ALERT = 2;
+export const CHECK_EVERY_MS = 5 * 60_000; // matches the cron in wrangler.jsonc
 const STILL_DOWN_EVERY_MS = 30 * 60_000;
 const TIMEOUT_MS = 10_000;
 // How long to keep each kind of history. Raw rows are only saved for failures (the error text);
@@ -86,7 +87,7 @@ export async function runChecks(env, ctx) {
       const inc = await env.DB.prepare('SELECT started_at FROM incidents WHERE id = ?').bind(incidentId).first();
       const downFor = inc ? now - inc.started_at : 0;
       // Remind every 30 minutes while it stays down.
-      if (inc && Math.floor(downFor / STILL_DOWN_EVERY_MS) > Math.floor((downFor - 60_000) / STILL_DOWN_EVERY_MS)) {
+      if (inc && Math.floor(downFor / STILL_DOWN_EVERY_MS) > Math.floor((downFor - CHECK_EVERY_MS) / STILL_DOWN_EVERY_MS)) {
         await alert(env, ctx, { project: c.project_id, source: 'check', title: `${c.project_name} is still down`, body: `Down for ${minutesText(downFor)}: ${r.error || 'failed'}`, tag: `down-${c.id}` });
       }
     } else if (r.ok && incidentId) {
