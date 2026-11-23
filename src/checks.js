@@ -4,9 +4,14 @@ import { alert } from './events.js';
 import { minutesText } from './util.js';
 
 const FAILS_TO_ALERT = 2;
+export const CHECK_EVERY_MS = 5 * 60_000; // matches the cron in wrangler.jsonc
 const STILL_DOWN_EVERY_MS = 30 * 60_000;
 const TIMEOUT_MS = 10_000;
-const KEEP_DAYS = 95;
+// How long to keep each kind of history. Raw rows are only saved for failures (the error text);
+// passing results just bump the hourly/daily counters the pages read.
+const KEEP_RAW_DAYS = 30;
+const KEEP_HOURLY_DAYS = 2;   // 24-hour sparklines
+const KEEP_DAILY_DAYS = 95;   // 90-day strip and uptime %
 
 async function probe(check) {
   const started = Date.now();
@@ -47,10 +52,23 @@ export async function runChecks(env, ctx) {
   const now = Date.now();
   const outcomes = await Promise.all(checks.map(async (c) => ({ c, r: await probe(c) })));
 
+  const hour = Math.floor(now / 3600_000);
+  const day = new Date(now).toISOString().slice(0, 10); // UTC, matching the monitoring page
+  const hasMs = (r) => (r.ms == null ? 0 : 1);
   const writes = [];
   for (const { c, r } of outcomes) {
-    writes.push(env.DB.prepare('INSERT INTO check_results (check_id, ok, status, ms, error, at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(c.id, r.ok ? 1 : 0, r.status, r.ms, r.error, now));
+    writes.push(env.DB.prepare(
+      `INSERT INTO check_hourly (check_id, hour, total, ok, ms_sum, ms_n) VALUES (?, ?, 1, ?, ?, ?)
+       ON CONFLICT (check_id, hour) DO UPDATE SET total = total + 1, ok = ok + excluded.ok, ms_sum = ms_sum + excluded.ms_sum, ms_n = ms_n + excluded.ms_n`
+    ).bind(c.id, hour, r.ok ? 1 : 0, r.ms || 0, hasMs(r)));
+    writes.push(env.DB.prepare(
+      `INSERT INTO check_daily (check_id, day, total, ok, ms_sum, ms_n) VALUES (?, ?, 1, ?, ?, ?)
+       ON CONFLICT (check_id, day) DO UPDATE SET total = total + 1, ok = ok + excluded.ok, ms_sum = ms_sum + excluded.ms_sum, ms_n = ms_n + excluded.ms_n`
+    ).bind(c.id, day, r.ok ? 1 : 0, r.ms || 0, hasMs(r)));
+    if (!r.ok) {
+      writes.push(env.DB.prepare('INSERT INTO check_results (check_id, ok, status, ms, error, at) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(c.id, 0, r.status, r.ms, r.error, now));
+    }
   }
   if (writes.length) await env.DB.batch(writes);
 
@@ -69,7 +87,7 @@ export async function runChecks(env, ctx) {
       const inc = await env.DB.prepare('SELECT started_at FROM incidents WHERE id = ?').bind(incidentId).first();
       const downFor = inc ? now - inc.started_at : 0;
       // Remind every 30 minutes while it stays down.
-      if (inc && Math.floor(downFor / STILL_DOWN_EVERY_MS) > Math.floor((downFor - 60_000) / STILL_DOWN_EVERY_MS)) {
+      if (inc && Math.floor(downFor / STILL_DOWN_EVERY_MS) > Math.floor((downFor - CHECK_EVERY_MS) / STILL_DOWN_EVERY_MS)) {
         await alert(env, ctx, { project: c.project_id, source: 'check', title: `${c.project_name} is still down`, body: `Down for ${minutesText(downFor)}: ${r.error || 'failed'}`, tag: `down-${c.id}` });
       }
     } else if (r.ok && incidentId) {
@@ -91,6 +109,11 @@ export async function runChecks(env, ctx) {
 }
 
 export async function pruneResults(env) {
-  const cutoff = Date.now() - KEEP_DAYS * 86400_000;
-  await env.DB.prepare('DELETE FROM check_results WHERE at < ?').bind(cutoff).run();
+  const now = Date.now();
+  const dayOf = (ms) => new Date(ms).toISOString().slice(0, 10);
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM check_results WHERE at < ?').bind(now - KEEP_RAW_DAYS * 86400_000),
+    env.DB.prepare('DELETE FROM check_hourly WHERE hour < ?').bind(Math.floor((now - KEEP_HOURLY_DAYS * 86400_000) / 3600_000)),
+    env.DB.prepare('DELETE FROM check_daily WHERE day < ?').bind(dayOf(now - KEEP_DAILY_DAYS * 86400_000)),
+  ]);
 }

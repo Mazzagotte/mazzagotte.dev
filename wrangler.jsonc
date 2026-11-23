@@ -32,8 +32,9 @@
     { "binding": "SPARETIME_DB", "database_name": "sparetime", "database_id": "6eb77ed3-bf35-4fcd-83c7-379940f88eac" },
     { "binding": "USBC_DB", "database_name": "ada-county-usbc-portal", "database_id": "6f7d4e42-9220-43a1-9f28-c1fb594a9396" }
   ],
-  // Uptime checks every minute (the shortest schedule Cloudflare allows).
-  "triggers": { "crons": ["* * * * *"] },
+  // Uptime checks every 5 minutes. (Every minute cost ~4x the D1 reads/writes for little gain.)
+  // The daily jobs in src/index.js run at :00, :05 and :30, so they must stay on this 5-minute grid.
+  "triggers": { "crons": ["*/5 * * * *"] },
   "vars": {
     "TIMEZONE": "America/Denver",
     "VAPID_SUBJECT": "https://mazzagotte.dev",

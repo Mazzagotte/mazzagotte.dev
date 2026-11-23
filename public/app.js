@@ -596,7 +596,7 @@ function viewMonitoring(d) {
   <section class="card banner rise" aria-label="Overall status" style="margin-bottom:16px">
     <span class="badge${down.length ? ' bad' : waiting === enabled.length ? ' wait' : ''}" aria-hidden="true">${down.length ? L('circle-alert', 22) : waiting === enabled.length ? L('clock', 22) : ICON.check}</span>
     <div style="flex:1;min-width:0"><p style="margin:0;font-size:18px;font-weight:600">${down.length ? `${down.length} ${down.length === 1 ? 'site is' : 'sites are'} down` : waiting === enabled.length ? 'Waiting for the first check' : 'All systems operational'}</p>
-    <p class="muted" style="margin:2px 0 0;font-size:14px">${enabled.length} checks every minute · ${openInc} open incident${openInc === 1 ? '' : 's'} · alerts on ${d.push_devices} device${d.push_devices === 1 ? '' : 's'}</p></div>
+    <p class="muted" style="margin:2px 0 0;font-size:14px">${enabled.length} checks every 5 minutes · ${openInc} open incident${openInc === 1 ? '' : 's'} · alerts on ${d.push_devices} device${d.push_devices === 1 ? '' : 's'}</p></div>
     ${d.push_devices ? `<button class="btn" data-act="push-test">${ICON.bell}Send a test alert</button>` : `<button class="btn primary" data-act="push-on">${ICON.bell}Turn on alerts on this device</button>`}
   </section>
   <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(min(440px,100%),1fr))">
@@ -1207,9 +1207,9 @@ document.addEventListener('keydown', (e) => {
 
 window.addEventListener('hashchange', () => { S.showForm = null; S.editing = null; S.tab = 'notes'; S.nf = { kind: 'all', q: '' }; S.pending = []; S.fin.kind = 'all'; S.fin.q = ''; S.fin.limit = 50; closePalette(); render(); });
 
-// Live: refresh quietly every 30 seconds while the page is open, and as soon as you come back to it.
+// Live: refresh quietly every 60 seconds while the page is open, and as soon as you come back to it.
 const busy = () => S.palette || S.showForm || S.editing || S.uploading || (S.pending && S.pending.length) || document.querySelector('.dragging') || document.hidden || document.activeElement.matches('input,textarea,select');
-setInterval(() => { if (!busy()) render({ quiet: true }); }, 30_000);
+setInterval(() => { if (!busy()) render({ quiet: true }); }, 60_000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && S.loadedAt && Date.now() - S.loadedAt > 10_000 && !busy()) render({ quiet: true }); });
 setInterval(() => {
   const el = $('#live-t'); if (!el || !S.loadedAt) return;
