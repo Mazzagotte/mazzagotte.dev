@@ -47,9 +47,10 @@ async function statusRows(env) {
 async function sparks(env) {
   const hour = 3600_000;
   const end = Math.floor(Date.now() / hour);
+  // Reads the hourly rollup (about 24 rows per check), not raw results.
   const { results } = await env.DB.prepare(
-    'SELECT check_id, at / 3600000 AS h, AVG(ms) AS ms, MIN(ok) AS ok FROM check_results WHERE at >= ? GROUP BY check_id, h'
-  ).bind((end - 23) * hour).all();
+    'SELECT check_id, hour AS h, CASE WHEN ms_n > 0 THEN ms_sum * 1.0 / ms_n END AS ms, ok = total AS ok FROM check_hourly WHERE hour >= ?'
+  ).bind(end - 23).all();
   const out = {};
   for (const r of results) {
     const i = Math.floor(r.h) - (end - 23);
@@ -194,10 +195,10 @@ async function getProject(env, id) {
   // Key facts for the header.
   const today = todayLocal(tzOf(env));
   const [mFrom, mTo] = monthRange(today);
-  const since = Date.now() - 30 * 86400_000;
+  const sinceDay = new Date(Date.now() - 29 * 86400_000).toISOString().slice(0, 10); // last 30 UTC days, from the daily rollup
   const [money, up, deploy, { results: files }] = await Promise.all([
     moneySummary(env, mFrom, mTo, id),
-    checks.length ? env.DB.prepare(`SELECT COUNT(*) AS total, SUM(ok) AS ok, AVG(ms) AS ms FROM check_results WHERE at >= ? AND check_id IN (${checks.map(() => '?').join(',')})`).bind(since, ...checks.map((c) => c.id)).first() : null,
+    checks.length ? env.DB.prepare(`SELECT SUM(total) AS total, SUM(ok) AS ok, SUM(ms_sum) * 1.0 / NULLIF(SUM(ms_n), 0) AS ms FROM check_daily WHERE day >= ? AND check_id IN (${checks.map(() => '?').join(',')})`).bind(sinceDay, ...checks.map((c) => c.id)).first() : null,
     env.DB.prepare("SELECT * FROM events WHERE project_id = ? AND source IN ('deploy', 'railway') AND text LIKE '%deploy%' ORDER BY created_at DESC LIMIT 1").bind(id).first(),
     env.DB.prepare('SELECT f.* FROM note_files f JOIN notes n ON n.id = f.note_id WHERE n.project_id = ? ORDER BY f.created_at').bind(id).all(),
   ]);
@@ -328,15 +329,17 @@ async function monitoring(env) {
   const from = addDays(today, -89);
   const [rawChecks, projects, spark] = await Promise.all([statusRows(env), allProjects(env), sparks(env)]);
   const checks = rawChecks.map((c) => ({ ...c, spark: spark[c.id] || [] }));
-  // Daily rollup from raw results (day in UTC keeps the query simple and is close enough for a 90-day strip).
-  const since = Date.parse(from + 'T00:00:00Z');
+  // Daily rollup kept by runChecks (UTC days; close enough for a 90-day strip). One small read gives
+  // both the strip and the 90-day totals, instead of two scans of every raw result.
   const { results: daily } = await env.DB.prepare(
-    `SELECT check_id, strftime('%Y-%m-%d', at / 1000, 'unixepoch') AS day, COUNT(*) AS total, SUM(ok) AS ok, AVG(ms) AS ms
-       FROM check_results WHERE at >= ? GROUP BY check_id, day`
-  ).bind(since).all();
-  const { results: totals } = await env.DB.prepare(
-    'SELECT check_id, COUNT(*) AS total, SUM(ok) AS ok FROM check_results WHERE at >= ? GROUP BY check_id'
-  ).bind(since).all();
+    `SELECT check_id, day, total, ok, CASE WHEN ms_n > 0 THEN ms_sum * 1.0 / ms_n END AS ms
+       FROM check_daily WHERE day >= ?`
+  ).bind(from).all();
+  const totals = Object.values(daily.reduce((acc, d) => {
+    const t = (acc[d.check_id] ||= { check_id: d.check_id, total: 0, ok: 0 });
+    t.total += d.total; t.ok += d.ok;
+    return acc;
+  }, {}));
   const { results: incidents } = await env.DB.prepare(
     `SELECT i.*, p.name AS project_name, p.color FROM incidents i LEFT JOIN projects p ON p.id = i.project_id
       ORDER BY i.started_at DESC LIMIT 20`

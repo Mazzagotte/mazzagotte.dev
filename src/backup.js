@@ -3,6 +3,8 @@ import { alert, logEvent } from './events.js';
 import { todayLocal } from './util.js';
 
 const KEEP_DAYS = 30;
+const PAGE = 1000;
+const ROWID = '__backup_rowid';
 export const backupDbs = (env) => [['hub', 'mazzagotte.dev hub', env.DB], ['sparetime', 'SpareTime', env.SPARETIME_DB], ['usbc', 'Ada County USBC', env.USBC_DB]].filter(([, , db]) => db);
 
 const b64 = (buf) => { let s = ''; const a = new Uint8Array(buf); for (let i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s); };
@@ -15,10 +17,22 @@ async function dump(db) {
   const tables = {}; let rows = 0;
   for (const t of schema.filter((x) => x.type === 'table')) {
     const all = [];
-    for (let off = 0; ; off += 1000) {
-      const { results } = await db.prepare(`SELECT * FROM "${t.name.replace(/"/g, '""')}" LIMIT 1000 OFFSET ${off}`).all();
-      for (const r of results) all.push(Object.fromEntries(Object.entries(r).map(([k, v]) => [k, clean(v)])));
-      if (results.length < 1000) break;
+    const name = `"${t.name.replace(/"/g, '""')}"`;
+    const keep = (r) => all.push(Object.fromEntries(Object.entries(r).filter(([k]) => k !== ROWID).map(([k, v]) => [k, clean(v)])));
+    if (/without\s+rowid/i.test(t.sql)) {
+      // Rare: no rowid to page by, so read it in one go.
+      const { results } = await db.prepare(`SELECT * FROM ${name}`).all();
+      results.forEach(keep);
+    } else {
+      // Page by rowid, not OFFSET. D1 bills every row OFFSET skips, so OFFSET paging read a big table
+      // over and over (93k uptime rows cost ~4.4M reads a night); this reads each row once.
+      for (let last = Number.MIN_SAFE_INTEGER; ;) {
+        const { results } = await db.prepare(`SELECT rowid AS ${ROWID}, * FROM ${name} WHERE rowid > ? ORDER BY rowid LIMIT ${PAGE}`)
+          .bind(last).all();
+        results.forEach(keep);
+        if (results.length < PAGE) break;
+        last = results[results.length - 1][ROWID];
+      }
     }
     tables[t.name] = all; rows += all.length;
   }
