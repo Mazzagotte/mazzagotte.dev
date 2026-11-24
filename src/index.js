@@ -5,6 +5,7 @@ import { cleanupFiles, handleApi, postRecurring } from './api.js';
 import { runBackups } from './backup.js';
 import { todoMorning } from './todos.js';
 import { pruneResults, runChecks } from './checks.js';
+import { pruneHistory } from './events.js';
 import { handleHook } from './hooks.js';
 import { HttpError, json, text, zonedParts } from './util.js';
 
@@ -52,11 +53,12 @@ export default {
       } catch (e) {
         console.log('checks failed', e && e.stack);
       }
-      // Once a day (3 AM Mountain), drop check history older than the 90-day window.
+      // Once a day (3 AM Mountain), trim old history so the database stays bounded (limits in checks.js and events.js).
       // Use the time the cron was scheduled for, not the clock, so a run that starts a few seconds late
       // still matches its slot (with 5-minute runs a missed slot means the job skips a whole day).
       const now = zonedParts(env.TIMEZONE || 'America/Denver', new Date(event.scheduledTime || Date.now()));
       if (now.hour === 3 && now.minute === 0) await pruneResults(env).catch((e) => console.log('prune failed', e));
+      if (now.hour === 3 && now.minute === 0) await pruneHistory(env).catch((e) => console.log('history prune failed', e));
       if (now.hour === 3 && now.minute === 5) await cleanupFiles(env).catch((e) => console.log('file cleanup failed', e));
       // Nightly backup of every database (2:30 AM Mountain).
       if (now.hour === 2 && now.minute === 30) await runBackups(env, ctx).catch((e) => console.log('backup failed', e));
